@@ -9,11 +9,14 @@ migrate:
 	./migrate-to-local-volume-pv.sh
 	make delete-cluster
 
+patch:
+	make create-cluster
+	./patch-helm-spec-values.sh
+	make delete-cluster
+
 .PHONY: create-cluster
 create-cluster:
 	k3d cluster create mycluster
-
-	## import image, TODO possibly push to docker hub
 	k3d image import -c mycluster rancher/local-path-provisioner:dev
 	kubectl -n kube-system set image deployment/local-path-provisioner local-path-provisioner=rancher/local-path-provisioner:dev
 
