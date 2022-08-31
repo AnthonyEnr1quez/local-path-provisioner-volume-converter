@@ -10,7 +10,7 @@ if kubectl exec -n test volume-test -- sh -c 'cat /data/hello.txt' | grep -q 'He
     echo "file persisted in pv"
 fi
 
-## create backuip
+## create backup
 velero backup create test-backup --include-namespaces test --wait
 
 ## remove pod and pvc

@@ -1,0 +1,26 @@
+---
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: sonarr
+  namespace: kube-system
+  labels:
+    component: sonarr
+spec:
+  repo: https://k8s-at-home.com/charts/
+  chart: sonarr
+  targetNamespace: test
+  valuesContent: |-
+    persistence:
+      config:
+        enabled: true
+        retain: true
+        annotations:
+          volumeType: local
+      temp:
+        enabled: true
+        retain: true
+        accessMode: ReadWriteOnce
+        size: 1Gi
+        annotations:
+          volumeType: local

@@ -4,6 +4,11 @@ basic-backup-flow:
 	./basic-backup-flow.sh
 	make delete-cluster
 
+migrate:
+	make create-cluster
+	./migrate-to-local-volume-pv.sh
+	make delete-cluster
+
 .PHONY: create-cluster
 create-cluster:
 	k3d cluster create mycluster
