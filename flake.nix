@@ -36,6 +36,7 @@
 
             sourceRoot = ".";
 
+            # todo, somehow copy into this dir?? how to read since out is symlink
             installPhase = ''
                 mkdir -p $out/bin
                 cp pv-migrate $out/bin/pv-migrate

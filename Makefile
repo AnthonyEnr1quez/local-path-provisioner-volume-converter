@@ -16,7 +16,7 @@ patch:
 
 go:
 	make create-cluster
-	./go_init.sh
+	./scripts/go_init.sh
 
 .PHONY: create-cluster
 create-cluster:
