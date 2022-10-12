@@ -14,6 +14,10 @@ patch:
 	./patch-helm-spec-values.sh
 	make delete-cluster
 
+go:
+	make create-cluster
+	./go_init.sh
+
 .PHONY: create-cluster
 create-cluster:
 	k3d cluster create mycluster
