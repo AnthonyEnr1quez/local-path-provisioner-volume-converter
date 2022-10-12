@@ -28,10 +28,10 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/remotecommand"
 
+	_ "embed"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
-	_ "embed"
 )
 
 var (
@@ -303,7 +303,7 @@ func (cw *ClientWrapper) unbindTempPVC(namespace, chartName, pvcName string) err
 	patch := func(p *PersistenceValues, pvcName string) {
 		delete(p.Persistence, fmt.Sprint(pvcName, "-temp"))
 	}
-	
+
 	return patchChart(cw.dc, namespace, chartName, pvcName, patch)
 }
 
