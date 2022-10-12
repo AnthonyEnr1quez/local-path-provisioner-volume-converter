@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 ## init namespace
 kubectl create namespace test
@@ -26,7 +26,7 @@ while [ $(kubectl get -n test deployment sonarr -o jsonpath='{.spec.replicas}') 
 while kubectl wait pods -n test -l app.kubernetes.io/name=sonarr --for condition=Ready --timeout=90s; do sleep 1; done
 
 ## pv migrate
-pv-migrate migrate sonarr-config sonarr-temp -n test -N test
+./pv-migrate migrate sonarr-config sonarr-temp -n test -N test
 
 ## delete local path pvc
 kubectl delete -n test pvc sonarr-config
@@ -52,7 +52,7 @@ while [ $(kubectl get -n test deployment sonarr -o jsonpath='{.spec.replicas}') 
 while kubectl wait pods -n test -l app.kubernetes.io/name=sonarr --for condition=Ready --timeout=90s; do sleep 1; done
 
 # pv migrate
-pv-migrate migrate sonarr-temp sonarr-config -d -n test -N test
+./pv-migrate migrate sonarr-temp sonarr-config -d -n test -N test
 
 ## remove temp volume
 kubectl patch -n kube-system helmchart sonarr --patch '{"spec": {"valuesContent": "persistence:\n  config:\n    enabled: true\n    retain: true\n    annotations:\n      volumeType: local"}}' --type=merge
