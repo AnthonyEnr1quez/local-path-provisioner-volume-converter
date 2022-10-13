@@ -32,6 +32,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
+
+	"github.com/AlecAivazis/survey/v2"
+	"github.com/samber/lo"
 )
 
 var (
@@ -71,119 +74,165 @@ func main() {
 		cs: cs,
 	}
 
-	tempChartNS := "kube-system"
-	charts, err := cw.getHelmCharts(tempChartNS)
+	namespaces, err := getNamespaces(cs)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
 
-	var sonarrChart unstructured.Unstructured
-	var sonarrChartName string
-	for _, chart := range charts {
-		sonarrChartName = chart.Object["metadata"].(map[string]interface{})["name"].(string)
-		if sonarrChartName == "sonarr" {
-			sonarrChart = chart
+	helmChartsByNamespace := lo.Associate(namespaces, func(n corev1.Namespace) (string, []unstructured.Unstructured) {
+		charts, err := cw.getHelmCharts(n.Name)
+		if err != nil {
+			return "", nil
 		}
-	}
+		return n.Name, charts
+	})
 
-	podNS := sonarrChart.Object["spec"].(map[string]interface{})["targetNamespace"].(string)
-	sonarrPod, err := cw.getPodByName(podNS, sonarrChartName)
-	if err != nil {
-		log.Fatalln(err.Error())
+	nsNamesWithHCCount := lo.FilterMap(lo.Entries(helmChartsByNamespace), func(n lo.Entry[string, []unstructured.Unstructured], _ int) (string, bool) {
+		if len(n.Value) != 0 {
+			return fmt.Sprintf("%s: %d charts", n.Key, len(n.Value)), true
+		}
+		return "", false
+	})
+
+	var selectedNS1 string
+	prompt := &survey.Select{
+		Message: "Select namespace",
+		Options: nsNamesWithHCCount,
 	}
+	survey.AskOne(prompt, &selectedNS1)
+
+	selectedNS := selectedNS1[:strings.IndexByte(selectedNS1, ':')]
+
+	selectedCharts := helmChartsByNamespace[selectedNS]
+
+	volumesByHelmChartName := lo.Associate(selectedCharts, func(chart unstructured.Unstructured) (string, []corev1.Volume)  {
+		if chart.Object["spec"].(map[string]interface{})["targetNamespace"] != nil {
+			podNS := chart.Object["spec"].(map[string]interface{})["targetNamespace"].(string)
+			chartName := chart.Object["metadata"].(map[string]interface{})["name"].(string)
+			pod, err := cw.getPodByName(podNS, chartName)
+			if err != nil {
+				return "", nil
+			}
+
+			volumesToUpdate := lo.Filter(pod.Spec.Volumes, func(vol corev1.Volume, _ int) bool {
+				if vol.PersistentVolumeClaim != nil {
+					pvcName := vol.PersistentVolumeClaim.ClaimName
+					pv, err := cw.getPVFromPVCName(podNS, pvcName)
+					if err != nil {
+						return false
+					}
+
+					if pv.Spec.PersistentVolumeSource.HostPath != nil {
+						return true
+					}
+				}
+				return false
+			})
+			
+			return chartName, volumesToUpdate
+		}
+		return "", nil
+	})
+
+	helmChartNameWithVolCount := lo.FilterMap(lo.Entries(volumesByHelmChartName), func(n lo.Entry[string, []corev1.Volume], _ int) (string, bool) {
+		if len(n.Value) != 0 {
+			return fmt.Sprintf("%s: %d volumes", n.Key, len(n.Value)), true
+		}
+		return "", false
+	})
+
+	var selectedChart1 string
+	prompt = &survey.Select{
+		Message: "Select Chart",
+		Options: helmChartNameWithVolCount,
+	}
+	survey.AskOne(prompt, &selectedChart1)
+	selectedChart := selectedChart1[:strings.IndexByte(selectedChart1, ':')]
 
 	/// TODO https://pkg.go.dev/os#UserCacheDir
 	os.WriteFile("pv-migrate-bin-v1", pvm, 0755)
 
-	for _, vol := range sonarrPod.Spec.Volumes {
-		if vol.PersistentVolumeClaim != nil {
-			pvcName := vol.PersistentVolumeClaim.ClaimName
-			pv, err := cw.getPVFromPVCName(podNS, pvcName)
-			if err != nil {
-				log.Fatalln(err.Error())
-			}
+	for _, vol := range volumesByHelmChartName[selectedChart] {
+		pvcName := vol.PersistentVolumeClaim.ClaimName
+		podNS := "test"
 
-			if pv.Spec.PersistentVolumeSource.HostPath != nil {
-				fmt.Println("Doing stuff to this pvc:", pvcName)
+		fmt.Println("Doing stuff to this pvc:", pvcName)
+		// writeExtraFile(cs, config, podNS, sonarrPod.Name)
 
-				writeExtraFile(cs, config, podNS, sonarrPod.Name)
-
-				tempPVCName, err := cw.addTempPVC(tempChartNS, sonarrChartName, vol.Name)
-				if err != nil {
-					log.Fatalln(err.Error())
-				}
-
-				err = waitFor(cw.isPVCBound(podNS, tempPVCName))
-				if err != nil {
-					log.Fatalln(err.Error())
-				}
-
-				err = waitFor(cw.isPodReady(cs, podNS, sonarrChartName))
-				if err != nil {
-					log.Fatalln(err.Error())
-				}
-				fmt.Println("pod ready after first bind")
-
-				err = cw.scaleDeployment(podNS, sonarrChartName, 0)
-				if err != nil {
-					log.Fatalln(err.Error())
-				}
-
-				err = pvMigrater(podNS, pvcName, tempPVCName)
-				if err != nil {
-					log.Fatalln(err.Error())
-				}
-
-				err = cw.deletePVC(podNS, pvcName)
-				if err != nil {
-					log.Fatalln(err.Error())
-				}
-
-				err = cw.updateOriginalPVC(tempChartNS, sonarrChartName, vol.Name)
-				if err != nil {
-					log.Fatalln(err.Error())
-				}
-
-				err = waitFor(cw.isPVCBound(podNS, tempPVCName))
-				if err != nil {
-					log.Fatalln(err.Error())
-				}
-
-				err = waitFor(cw.isPodReady(cs, podNS, sonarrChartName))
-				if err != nil {
-					log.Fatalln(err.Error())
-				}
-				fmt.Println("pod ready after second bind")
-
-				err = cw.scaleDeployment(podNS, sonarrChartName, 0)
-				if err != nil {
-					log.Fatalln(err.Error())
-				}
-
-				err = pvMigrater(podNS, tempPVCName, pvcName)
-				if err != nil {
-					log.Fatalln(err.Error())
-				}
-
-				err = cw.unbindTempPVC(tempChartNS, sonarrChartName, vol.Name)
-				if err != nil {
-					log.Fatalln(err.Error())
-				}
-
-				err = cw.deletePVC(podNS, tempPVCName)
-				if err != nil {
-					log.Fatalln(err.Error())
-				}
-
-				err = waitFor(cw.isPodReady(cs, podNS, sonarrChartName))
-				if err != nil {
-					log.Fatalln(err.Error())
-				}
-				fmt.Println("pod ready after third bind")
-
-				fmt.Print("asdf")
-			}
+		tempPVCName, err := cw.addTempPVC(selectedNS, selectedChart, vol.Name)
+		if err != nil {
+			log.Fatalln(err.Error())
 		}
+
+		err = waitFor(cw.isPVCBound(podNS, tempPVCName))
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+
+		err = waitFor(cw.isPodReady(cs, podNS, selectedChart))
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+		fmt.Println("pod ready after first bind")
+
+		err = cw.scaleDeployment(podNS, selectedChart, 0)
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+
+		err = pvMigrater(podNS, pvcName, tempPVCName)
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+
+		err = cw.deletePVC(podNS, pvcName)
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+
+		err = cw.updateOriginalPVC(selectedNS, selectedChart, vol.Name)
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+
+		err = waitFor(cw.isPVCBound(podNS, tempPVCName))
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+
+		err = waitFor(cw.isPodReady(cs, podNS, selectedChart))
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+		fmt.Println("pod ready after second bind")
+
+		err = cw.scaleDeployment(podNS, selectedChart, 0)
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+
+		err = pvMigrater(podNS, tempPVCName, pvcName)
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+
+		err = cw.unbindTempPVC(selectedNS, selectedChart, vol.Name)
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+
+		err = cw.deletePVC(podNS, tempPVCName)
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+
+		err = waitFor(cw.isPodReady(cs, podNS, selectedChart))
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+		fmt.Println("pod ready after third bind")
+
+		fmt.Print("asdf")
 	}
 
 	os.Remove("pv-migrate-bin-v1")
@@ -476,6 +525,15 @@ func (cw *ClientWrapper) isPVCBound(namespace, pvcName string) wait.ConditionFun
 
 func waitFor(condition wait.ConditionFunc) error {
 	return wait.PollImmediateInfinite(time.Second, condition)
+}
+
+func getNamespaces(cs kubernetes.Interface) ([]corev1.Namespace, error) {
+	namespaces, err := cs.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	return namespaces.Items, nil
 }
 
 // func getPVCs(cs kubernetes.Interface, namespace string) []corev1.PersistentVolumeClaim {
