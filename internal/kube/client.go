@@ -100,13 +100,7 @@ func (cw *ClientWrapper) GetPodByName(namespace, name string) (corev1.Pod, error
 	}
 }
 
-// TODO possibly dont need to fetch the pvc first? should already have it from the pod
-func (cw *ClientWrapper) GetPVFromPVCName(namespace, pvcName string) (*corev1.PersistentVolume, error) {
-	pvc, err := cw.cs.CoreV1().PersistentVolumeClaims(namespace).Get(context.Background(), pvcName, metav1.GetOptions{})
-	if err != nil {
-		return nil, err
-	}
-
+func (cw *ClientWrapper) GetPVFromPVC(pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolume, error) {
 	return cw.cs.CoreV1().PersistentVolumes().Get(context.Background(), pvc.Spec.VolumeName, metav1.GetOptions{})
 }
 
@@ -176,7 +170,7 @@ func (cw *ClientWrapper) ScaleDeployment(namespace, name string, replicas int) e
 // 			fmt.Println("running")
 // 			return true, nil
 // 		case corev1.PodFailed, corev1.PodSucceeded:
-// 			return false, nil // TODO conditions.ErrPodCompleted
+// 			return false, nil
 // 		}
 // 		return false, nil
 // 	}

@@ -18,6 +18,18 @@ import (
 /// TODO just throw it all in while loop until they quit
 
 func main() {
+	err := kube.CreateTempFiles()
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	defer func() {
+		err = kube.CleanUpTempFiles()
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+	}()
+
 	cw := kube.GetClientWrapper()
 
 	selectedNS, selectedCharts, err := selectNamespace(&cw)
@@ -27,10 +39,11 @@ func main() {
 
 	volumes, selectedChart := selectChart(&cw, selectedCharts)
 
-	pvcName, volumeName := selectVolume(volumes)
+	volume, volumeName := selectVolume(volumes)
 
-	// TODO, can read from chart?
-	podNS := "test"
+	pvcName := volume.Spec.ClaimRef.Name
+
+	podNS := volume.Spec.ClaimRef.Namespace
 
 	fmt.Println("Doing stuff to this pvc:", pvcName)
 
@@ -147,7 +160,7 @@ func selectChart(cw *kube.ClientWrapper, charts []unstructured.Unstructured) ([]
 
 			pvcs, _ := cw.GetPVCsByChartName(targetNamespace, chartName)
 			volumesToUpdate := lo.FilterMap(pvcs, func(pvc corev1.PersistentVolumeClaim, _ int) (*corev1.PersistentVolume, bool) {
-				pv, err := cw.GetPVFromPVCName(targetNamespace, pvc.GetName())
+				pv, err := cw.GetPVFromPVC(&pvc)
 				if err != nil {
 					return nil, false
 				}
@@ -160,13 +173,11 @@ func selectChart(cw *kube.ClientWrapper, charts []unstructured.Unstructured) ([]
 			})
 
 			return chartName, volumesToUpdate
-
 		}
 
 		return "", nil
 	})
 
-	// try compact?
 	filtered := lo.OmitByKeys(pvsByHelmChartName, []string{""})
 
 	selectedChart := prompt.AskOne(
@@ -180,12 +191,18 @@ func selectChart(cw *kube.ClientWrapper, charts []unstructured.Unstructured) ([]
 	return filtered[selectedChart], selectedChart
 }
 
-func selectVolume(volumes []*corev1.PersistentVolume) (string, string) {
-	pvcNames := lo.Map(volumes, func(vol *corev1.PersistentVolume, _ int) string {
-		return vol.Spec.ClaimRef.Name
+func selectVolume(volumes []*corev1.PersistentVolume) (*corev1.PersistentVolume, string) {
+	volsByPVCName := lo.Associate(volumes, func(v *corev1.PersistentVolume) (string, *corev1.PersistentVolume){
+		return v.Spec.ClaimRef.Name, v
 	})
 
-	selectedVolumeName := prompt.AskOne("Select Volume", pvcNames, nil)
+	selectedVolumeName := prompt.AskOne("Select Volume", lo.Keys(volsByPVCName), nil)
 
-	return selectedVolumeName, selectedVolumeName[strings.IndexByte(selectedVolumeName, '-')+1:]
+	// pvcNames := lo.Map(volumes, func(vol *corev1.PersistentVolume, _ int) string {
+	// 	return vol.Spec.ClaimRef.Name
+	// })
+
+	// selectedVolumeName := prompt.AskOne("Select Volume", pvcNames, nil)
+
+	return volsByPVCName[selectedVolumeName], selectedVolumeName[strings.IndexByte(selectedVolumeName, '-')+1:]
 }

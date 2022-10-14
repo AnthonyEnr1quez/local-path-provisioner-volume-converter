@@ -10,18 +10,56 @@ import (
 	"strings"
 )
 
-var (
-	//go:embed bin/pv-migrate
-	pvm []byte
+const (
+	tmpDirName = "local-path-provisioner-volume-converter"
+	tmpBinName = "pv-migrate"
 )
 
-func PvMigrater(namespace, fromPVC, toPVC string) error {
-	// TODO https://pkg.go.dev/os#UserCacheDir
-	// Only do once per exec 
-	os.WriteFile("pv-migrate-bin-v1", pvm, 0755)
-	defer os.Remove("pv-migrate-bin-v1")
+//go:embed bin/pv-migrate
+var pvMigrateBin []byte
 
-	cmd := exec.Command("./pv-migrate-bin-v1", "migrate", fromPVC, toPVC, "-n", namespace, "-N", namespace)
+func getCachePath() (string, error) {
+	userCachePath, err := os.UserCacheDir()
+	if err != nil {
+		return "", err
+	}
+
+	cachePath := fmt.Sprintf("%s/%s", userCachePath, tmpDirName)
+	return cachePath, nil
+}
+
+func CreateTempFiles() error {
+	CleanUpTempFiles()
+	cachePath, err := getCachePath()
+	if err != nil {
+		return err
+	}
+
+	err = os.Mkdir(cachePath, os.ModePerm)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(fmt.Sprintf("%s/%s", cachePath, tmpBinName), pvMigrateBin, 0755)
+}
+
+func CleanUpTempFiles() error {
+	cachePath, err := getCachePath()
+	if err != nil {
+		return err
+	}
+
+	return os.RemoveAll(cachePath)
+}
+
+// TODO need -d on second write? https://github.com/utkuozdemir/pv-migrate/blob/master/USAGE.md
+func PvMigrater(namespace, fromPVC, toPVC string) error {
+	cachePath, err := getCachePath()
+	if err != nil {
+		return err
+	}
+
+	cmd := exec.Command(fmt.Sprintf("%s/%s", cachePath, tmpBinName), "migrate", fromPVC, toPVC, "-n", namespace, "-N", namespace)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 

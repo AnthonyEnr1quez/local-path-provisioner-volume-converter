@@ -26,9 +26,9 @@ func (cw *ClientWrapper) IsPVCBound(namespace, pvcName string) wait.ConditionFun
 
 		switch pvc.Status.Phase {
 		case corev1.ClaimBound:
-			pv, _ := cw.GetPVFromPVCName(namespace, pvcName)
+			pv, _ := cw.GetPVFromPVC(pvc)
 			if pv.Spec.PersistentVolumeSource.Local == nil {
-				// TODO handle
+				// TODO handle, sometimes randomly happens to me?
 				fmt.Printf("%s is not a local volume", pvcName)
 			}
 			fmt.Println("new pvc bound")

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"gopkg.in/yaml.v2" // TODO check v3?
+	"gopkg.in/yaml.v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
@@ -83,13 +83,12 @@ func (cw *ClientWrapper) AddTempPVC(namespace, chartName, pvcName string) (strin
 		return "", err
 	}
 
-	// TODO
-	return "sonarr-" + tempPVCName, nil
+	return fmt.Sprintf("%s-%s", chartName, tempPVCName), nil
 }
 
 func (cw *ClientWrapper) UpdateOriginalPVC(namespace, chartName, pvcName string) error {
 	patch := func(p *PersistenceValues, pvcName string) {
-		p.Persistence[pvcName].(map[interface{}]interface{})["annotations"] = map[interface{}]interface{}{
+		p.Persistence[pvcName].(map[string]interface{})["annotations"] = map[string]interface{}{
 			"volumeType": "local",
 		}
 	}
