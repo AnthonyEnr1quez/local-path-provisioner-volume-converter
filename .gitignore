@@ -1,3 +1,5 @@
 .direnv/
 .vscode/
+
 result
+vendor/

@@ -17,7 +17,7 @@
             version = "0.0.1";
 
             modSha256 = lib.fakeSha256;
-            vendorSha256 = null;
+            vendorSha256 = "AIpT5qcP2PGy1JBQyo8DVN0poqC+r9KvtwobgIsWCPI=";
 
             src = ./.;
           };
