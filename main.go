@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
 	"strconv"
 
 	corev1 "k8s.io/api/core/v1"
@@ -14,6 +13,8 @@ import (
 	"github.com/AnthonyEnr1quez/local-path-provisioner-volume-converter/internal/kube"
 	"github.com/samber/lo"
 )
+
+/// TODO just throw it all in while loop until they quit
 
 func main() {
 	cw := kube.GetClientWrapper()
@@ -96,88 +97,100 @@ func main() {
 	}
 	survey.AskOne(prompt, &selectedChart)
 
-	os.Exit(1)
+	volNames := lo.Map(volumesByHelmChartName[selectedChart], func(vol corev1.Volume, _ int) string {
+		return vol.PersistentVolumeClaim.ClaimName
+	})
 
-	for _, vol := range volumesByHelmChartName[selectedChart] {
-		pvcName := vol.PersistentVolumeClaim.ClaimName
-		podNS := "test"
-
-		fmt.Println("Doing stuff to this pvc:", pvcName)
-		// writeExtraFile(cs, config, podNS, sonarrPod.Name)
-
-		tempPVCName, err := cw.AddTempPVC(selectedNS, selectedChart, vol.Name)
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-
-		err = kube.WaitFor(cw.IsPVCBound(podNS, tempPVCName))
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-
-		err = kube.WaitFor(cw.IsPodReady(podNS, selectedChart))
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-		fmt.Println("pod ready after first bind")
-
-		err = cw.ScaleDeployment(podNS, selectedChart, 0)
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-
-		err = kube.PvMigrater(podNS, pvcName, tempPVCName)
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-
-		err = cw.DeletePVC(podNS, pvcName)
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-
-		err = cw.UpdateOriginalPVC(selectedNS, selectedChart, vol.Name)
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-
-		err = kube.WaitFor(cw.IsPVCBound(podNS, tempPVCName))
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-
-		err = kube.WaitFor(cw.IsPodReady(podNS, selectedChart))
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-		fmt.Println("pod ready after second bind")
-
-		err = cw.ScaleDeployment(podNS, selectedChart, 0)
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-
-		err = kube.PvMigrater(podNS, tempPVCName, pvcName)
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-
-		err = cw.UnbindTempPVC(selectedNS, selectedChart, vol.Name)
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-
-		err = cw.DeletePVC(podNS, tempPVCName)
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-
-		err = kube.WaitFor(cw.IsPodReady(podNS, selectedChart))
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-		fmt.Println("pod ready after third bind")
-
-		fmt.Print("asdf")
+	var selectedVolumeName string
+	prompt = &survey.Select{
+		Message: "Select Volume",
+		Options: volNames,
 	}
+	survey.AskOne(prompt, &selectedVolumeName)
+
+	vol, _ := lo.Find(volumesByHelmChartName[selectedChart], func(vol corev1.Volume) bool {
+		return vol.PersistentVolumeClaim.ClaimName == selectedVolumeName
+	})
+
+	pvcName := vol.PersistentVolumeClaim.ClaimName
+	// TODO, can read from chart
+	podNS := "test"
+
+	fmt.Println("Doing stuff to this pvc:", pvcName)
+	// writeExtraFile(cs, config, podNS, sonarrPod.Name)
+
+	tempPVCName, err := cw.AddTempPVC(selectedNS, selectedChart, vol.Name)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	err = kube.WaitFor(cw.IsPVCBound(podNS, tempPVCName))
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	err = kube.WaitFor(cw.IsPodReady(podNS, selectedChart))
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+	fmt.Println("pod ready after first bind")
+
+	err = cw.ScaleDeployment(podNS, selectedChart, 0)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	err = kube.PvMigrater(podNS, pvcName, tempPVCName)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	err = cw.DeletePVC(podNS, pvcName)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	err = cw.UpdateOriginalPVC(selectedNS, selectedChart, vol.Name)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	err = kube.WaitFor(cw.IsPVCBound(podNS, tempPVCName))
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	err = kube.WaitFor(cw.IsPodReady(podNS, selectedChart))
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+	fmt.Println("pod ready after second bind")
+
+	err = cw.ScaleDeployment(podNS, selectedChart, 0)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	err = kube.PvMigrater(podNS, tempPVCName, pvcName)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	err = cw.UnbindTempPVC(selectedNS, selectedChart, vol.Name)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	err = cw.DeletePVC(podNS, tempPVCName)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	err = kube.WaitFor(cw.IsPodReady(podNS, selectedChart))
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+	fmt.Println("pod ready after third bind")
+
+	fmt.Println("DONE")
 }
