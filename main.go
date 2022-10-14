@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/AlecAivazis/survey/v2"
 	"github.com/AnthonyEnr1quez/local-path-provisioner-volume-converter/internal/kube"
+	"github.com/AnthonyEnr1quez/local-path-provisioner-volume-converter/internal/prompt"
 	"github.com/samber/lo"
 )
 
@@ -19,107 +20,21 @@ import (
 func main() {
 	cw := kube.GetClientWrapper()
 
-	namespaces, err := cw.GetNamespaces()
+	selectedNS, selectedCharts, err := selectNamespace(&cw)
 	if err != nil {
-		log.Fatalln(err.Error())
+		log.Fatalln(err)
 	}
 
-	helmChartsByNamespace := lo.Associate(namespaces, func(n corev1.Namespace) (string, []unstructured.Unstructured) {
-		charts, err := cw.GetHelmCharts(n.Name)
-		if err != nil {
-			return "", nil
-		}
-		return n.Name, charts
-	})
+	volumes, selectedChart := selectChart(&cw, selectedCharts)
 
-	// nsNamesWithHCCount := lo.FilterMap(lo.Entries(helmChartsByNamespace), func(n lo.Entry[string, []unstructured.Unstructured], _ int) (string, bool) {
-	// 	if len(n.Value) != 0 {
-	// 		return fmt.Sprintf("%s: %d charts", n.Key, len(n.Value)), true
-	// 	}
-	// 	return "", false
-	// })
+	pvcName, volumeName := selectVolume(volumes)
 
-	var selectedNS string
-	prompt := &survey.Select{
-		Message: "Select namespace",
-		Options: lo.Keys(helmChartsByNamespace),
-		Description: func(value string, index int) string {
-			return strconv.Itoa(len(helmChartsByNamespace[value]))
-		},
-	}
-	survey.AskOne(prompt, &selectedNS)
-
-	selectedCharts := helmChartsByNamespace[selectedNS]
-
-	volumesByHelmChartName := lo.Associate(selectedCharts, func(chart unstructured.Unstructured) (string, []corev1.Volume) {
-		if chart.Object["spec"].(map[string]interface{})["targetNamespace"] != nil {
-			podNS := chart.Object["spec"].(map[string]interface{})["targetNamespace"].(string)
-			chartName := chart.Object["metadata"].(map[string]interface{})["name"].(string)
-			pod, err := cw.GetPodByName(podNS, chartName)
-			if err != nil {
-				return "", nil
-			}
-
-			volumesToUpdate := lo.Filter(pod.Spec.Volumes, func(vol corev1.Volume, _ int) bool {
-				if vol.PersistentVolumeClaim != nil {
-					pvcName := vol.PersistentVolumeClaim.ClaimName
-					pv, err := cw.GetPVFromPVCName(podNS, pvcName)
-					if err != nil {
-						return false
-					}
-
-					if pv.Spec.PersistentVolumeSource.HostPath != nil {
-						return true
-					}
-				}
-				return false
-			})
-
-			return chartName, volumesToUpdate
-		}
-		return "", nil
-	})
-
-	// helmChartNameWithVolCount := lo.FilterMap(lo.Entries(volumesByHelmChartName), func(n lo.Entry[string, []corev1.Volume], _ int) (string, bool) {
-	// 	if len(n.Value) != 0 {
-	// 		return fmt.Sprintf("%s: %d volumes", n.Key, len(n.Value)), true
-	// 	}
-	// 	return "", false
-	// })
-
-	var selectedChart string
-	prompt = &survey.Select{
-		Message: "Select Chart",
-		Options: lo.Keys(volumesByHelmChartName),
-		Description: func(value string, index int) string {
-			return strconv.Itoa(len(volumesByHelmChartName[value]))
-		},
-	}
-	survey.AskOne(prompt, &selectedChart)
-
-	volNames := lo.Map(volumesByHelmChartName[selectedChart], func(vol corev1.Volume, _ int) string {
-		return vol.PersistentVolumeClaim.ClaimName
-	})
-
-	var selectedVolumeName string
-	prompt = &survey.Select{
-		Message: "Select Volume",
-		Options: volNames,
-	}
-	survey.AskOne(prompt, &selectedVolumeName)
-
-	vol, _ := lo.Find(volumesByHelmChartName[selectedChart], func(vol corev1.Volume) bool {
-		return vol.PersistentVolumeClaim.ClaimName == selectedVolumeName
-	})
-
-	pvcName := vol.PersistentVolumeClaim.ClaimName
-	// TODO, can read from chart
+	// TODO, can read from chart?
 	podNS := "test"
 
 	fmt.Println("Doing stuff to this pvc:", pvcName)
-	// writeExtraFile(cs, config, podNS, sonarrPod.Name)
 
-	tempPVCName, err := cw.AddTempPVC(selectedNS, selectedChart, vol.Name)
+	tempPVCName, err := cw.AddTempPVC(selectedNS, selectedChart, volumeName)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
@@ -150,7 +65,7 @@ func main() {
 		log.Fatalln(err.Error())
 	}
 
-	err = cw.UpdateOriginalPVC(selectedNS, selectedChart, vol.Name)
+	err = cw.UpdateOriginalPVC(selectedNS, selectedChart, volumeName)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
@@ -176,7 +91,7 @@ func main() {
 		log.Fatalln(err.Error())
 	}
 
-	err = cw.UnbindTempPVC(selectedNS, selectedChart, vol.Name)
+	err = cw.UnbindTempPVC(selectedNS, selectedChart, volumeName)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
@@ -193,4 +108,84 @@ func main() {
 	fmt.Println("pod ready after third bind")
 
 	fmt.Println("DONE")
+}
+
+func selectNamespace(cw *kube.ClientWrapper) (chartNamespace string, charts []unstructured.Unstructured, err error) {
+	namespaces, err := cw.GetNamespaces()
+	if err != nil {
+		return "", nil, err
+	}
+
+	helmChartsByNamespace := lo.Associate(namespaces, func(n corev1.Namespace) (string, []unstructured.Unstructured) {
+		charts, err := cw.GetHelmCharts(n.Name)
+		if err != nil || len(charts) == 0 {
+			return "", nil
+		}
+
+		return n.Name, charts
+	})
+
+	filtered := lo.OmitByKeys(helmChartsByNamespace, []string{""})
+
+	selectedNS := prompt.AskOne(
+		"Select namespace",
+		lo.Keys(filtered),
+		func(value string, index int) string {
+			return strconv.Itoa(len(filtered[value]))
+		},
+	)
+
+	return selectedNS, filtered[selectedNS], nil
+}
+
+func selectChart(cw *kube.ClientWrapper, charts []unstructured.Unstructured) ([]*corev1.PersistentVolume, string) {
+	pvsByHelmChartName := lo.Associate(charts, func(chart unstructured.Unstructured) (string, []*corev1.PersistentVolume) {
+		// TODO this is temp for helm chart, will have to update for flux parsing
+		if chart.Object["spec"].(map[string]interface{})["targetNamespace"] != nil {
+			chartName := chart.Object["metadata"].(map[string]interface{})["name"].(string)
+			targetNamespace := chart.Object["spec"].(map[string]interface{})["targetNamespace"].(string)
+
+			pvcs, _ := cw.GetPVCsByChartName(targetNamespace, chartName)
+			volumesToUpdate := lo.FilterMap(pvcs, func(pvc corev1.PersistentVolumeClaim, _ int) (*corev1.PersistentVolume, bool) {
+				pv, err := cw.GetPVFromPVCName(targetNamespace, pvc.GetName())
+				if err != nil {
+					return nil, false
+				}
+
+				if pv.Spec.PersistentVolumeSource.HostPath != nil {
+					return pv, true
+				}
+
+				return nil, false
+			})
+
+			return chartName, volumesToUpdate
+
+		}
+
+		return "", nil
+	})
+
+	// try compact?
+	filtered := lo.OmitByKeys(pvsByHelmChartName, []string{""})
+
+	selectedChart := prompt.AskOne(
+		"Select Chart",
+		lo.Keys(filtered),
+		func(value string, index int) string {
+			return strconv.Itoa(len(filtered[value]))
+		},
+	)
+
+	return filtered[selectedChart], selectedChart
+}
+
+func selectVolume(volumes []*corev1.PersistentVolume) (string, string) {
+	pvcNames := lo.Map(volumes, func(vol *corev1.PersistentVolume, _ int) string {
+		return vol.Spec.ClaimRef.Name
+	})
+
+	selectedVolumeName := prompt.AskOne("Select Volume", pvcNames, nil)
+
+	return selectedVolumeName, selectedVolumeName[strings.IndexByte(selectedVolumeName, '-')+1:]
 }
