@@ -61,7 +61,7 @@ func patchChart(dynamicClient dynamic.Interface, namespace, chartName, pvcName s
 		return err
 	}
 
-	fmt.Println("helm chart patched")
+	fmt.Println("Helm chart patched")
 	return nil
 }
 

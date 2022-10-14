@@ -139,7 +139,7 @@ func (cw *ClientWrapper) ScaleDeployment(namespace, name string, replicas int) e
 		return err
 	}
 
-	fmt.Println("scaled to 0")
+	fmt.Printf("\n%s deployment finished scaling\n", name)
 	return nil
 }
 

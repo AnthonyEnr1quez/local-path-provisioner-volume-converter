@@ -16,7 +16,6 @@ import (
 )
 
 /// TODO just throw it all in while loop until they quit
-
 func main() {
 	err := kube.CreateTempFiles()
 	if err != nil {
@@ -32,93 +31,89 @@ func main() {
 
 	cw := kube.GetClientWrapper()
 
-	selectedNS, selectedCharts, err := selectNamespace(&cw)
+	selectedNamespace, selectedCharts, err := selectNamespace(&cw)
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	volumes, selectedChart := selectChart(&cw, selectedCharts)
+	volumes, selectedChartName := selectChart(&cw, selectedCharts)
 
 	volume, volumeName := selectVolume(volumes)
 
 	pvcName := volume.Spec.ClaimRef.Name
+	pvcNamespace := volume.Spec.ClaimRef.Namespace
 
-	podNS := volume.Spec.ClaimRef.Namespace
+	fmt.Printf("\nUpdating PVC %s from host path volume to local volume\n\n", pvcName)
 
-	fmt.Println("Doing stuff to this pvc:", pvcName)
-
-	tempPVCName, err := cw.AddTempPVC(selectedNS, selectedChart, volumeName)
+	tempPVCName, err := cw.AddTempPVC(selectedNamespace, selectedChartName, volumeName)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
 
-	err = kube.WaitFor(cw.IsPVCBound(podNS, tempPVCName))
+	err = kube.WaitFor(cw.IsPVCBound(pvcNamespace, tempPVCName))
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
 
-	err = kube.WaitFor(cw.IsPodReady(podNS, selectedChart))
-	if err != nil {
-		log.Fatalln(err.Error())
-	}
-	fmt.Println("pod ready after first bind")
-
-	err = cw.ScaleDeployment(podNS, selectedChart, 0)
+	err = kube.WaitFor(cw.IsPodReady(pvcNamespace, selectedChartName))
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
 
-	err = kube.PvMigrater(podNS, pvcName, tempPVCName)
+	err = cw.ScaleDeployment(pvcNamespace, selectedChartName, 0)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
 
-	err = cw.DeletePVC(podNS, pvcName)
+	err = kube.PvMigrater(pvcNamespace, pvcName, tempPVCName)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
 
-	err = cw.UpdateOriginalPVC(selectedNS, selectedChart, volumeName)
+	err = cw.DeletePVC(pvcNamespace, pvcName)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
 
-	err = kube.WaitFor(cw.IsPVCBound(podNS, tempPVCName))
+	err = cw.UpdateOriginalPVC(selectedNamespace, selectedChartName, volumeName)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
 
-	err = kube.WaitFor(cw.IsPodReady(podNS, selectedChart))
-	if err != nil {
-		log.Fatalln(err.Error())
-	}
-	fmt.Println("pod ready after second bind")
-
-	err = cw.ScaleDeployment(podNS, selectedChart, 0)
+	err = kube.WaitFor(cw.IsPVCBound(pvcNamespace, pvcName))
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
 
-	err = kube.PvMigrater(podNS, tempPVCName, pvcName)
+	err = kube.WaitFor(cw.IsPodReady(pvcNamespace, selectedChartName))
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
 
-	err = cw.UnbindTempPVC(selectedNS, selectedChart, volumeName)
+	err = cw.ScaleDeployment(pvcNamespace, selectedChartName, 0)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
 
-	err = cw.DeletePVC(podNS, tempPVCName)
+	err = kube.PvMigrater(pvcNamespace, tempPVCName, pvcName)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
 
-	err = kube.WaitFor(cw.IsPodReady(podNS, selectedChart))
+	err = cw.UnbindTempPVC(selectedNamespace, selectedChartName, volumeName)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
-	fmt.Println("pod ready after third bind")
+
+	err = cw.DeletePVC(pvcNamespace, tempPVCName)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	err = kube.WaitFor(cw.IsPodReady(pvcNamespace, selectedChartName))
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
 
 	fmt.Println("DONE")
 }
@@ -140,7 +135,7 @@ func selectNamespace(cw *kube.ClientWrapper) (chartNamespace string, charts []un
 
 	filtered := lo.OmitByKeys(helmChartsByNamespace, []string{""})
 
-	selectedNS := prompt.AskOne(
+	selectedNamespace := prompt.AskOne(
 		"Select namespace",
 		lo.Keys(filtered),
 		func(value string, index int) string {
@@ -148,7 +143,7 @@ func selectNamespace(cw *kube.ClientWrapper) (chartNamespace string, charts []un
 		},
 	)
 
-	return selectedNS, filtered[selectedNS], nil
+	return selectedNamespace, filtered[selectedNamespace], nil
 }
 
 func selectChart(cw *kube.ClientWrapper, charts []unstructured.Unstructured) ([]*corev1.PersistentVolume, string) {
@@ -197,12 +192,6 @@ func selectVolume(volumes []*corev1.PersistentVolume) (*corev1.PersistentVolume,
 	})
 
 	selectedVolumeName := prompt.AskOne("Select Volume", lo.Keys(volsByPVCName), nil)
-
-	// pvcNames := lo.Map(volumes, func(vol *corev1.PersistentVolume, _ int) string {
-	// 	return vol.Spec.ClaimRef.Name
-	// })
-
-	// selectedVolumeName := prompt.AskOne("Select Volume", pvcNames, nil)
 
 	return volsByPVCName[selectedVolumeName], selectedVolumeName[strings.IndexByte(selectedVolumeName, '-')+1:]
 }

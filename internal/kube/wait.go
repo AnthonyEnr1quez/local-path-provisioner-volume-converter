@@ -17,7 +17,7 @@ func WaitFor(condition wait.ConditionFunc) error {
 
 func (cw *ClientWrapper) IsPVCBound(namespace, pvcName string) wait.ConditionFunc {
 	return func() (bool, error) {
-		fmt.Printf(".") // progress bar!
+		fmt.Print(".")
 
 		pvc, err := cw.cs.CoreV1().PersistentVolumeClaims(namespace).Get(context.Background(), pvcName, metav1.GetOptions{})
 		if err != nil {
@@ -31,7 +31,7 @@ func (cw *ClientWrapper) IsPVCBound(namespace, pvcName string) wait.ConditionFun
 				// TODO handle, sometimes randomly happens to me?
 				fmt.Printf("%s is not a local volume", pvcName)
 			}
-			fmt.Println("new pvc bound")
+			fmt.Printf("\nNew PVC %s bound\n", pvcName)
 			return true, nil
 		default:
 			return false, nil
@@ -45,12 +45,12 @@ func (cw *ClientWrapper) IsPodReady(namespace, name string) wait.ConditionFunc {
 
 		pod, err := cw.GetPodByName(namespace, name)
 		if err != nil {
-			fmt.Println(err.Error())
 			return false, nil
 		}
 
 		for _, cond := range pod.Status.Conditions {
 			if cond.Type == corev1.PodReady && cond.Status == "True" {
+				fmt.Printf("\n%s pod bound\n", pod.Name)
 				return true, nil
 			}
 		}
@@ -64,7 +64,6 @@ func (cw *ClientWrapper) isPodScaled(namespace, name string) wait.ConditionFunc 
 
 		_, err := cw.GetPodByName(namespace, name)
 		if err != nil && strings.Contains(err.Error(), "not ready yet") {
-			fmt.Println("scaled")
 			return true, nil
 		}
 

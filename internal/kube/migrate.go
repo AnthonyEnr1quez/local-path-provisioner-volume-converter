@@ -70,11 +70,11 @@ func PvMigrater(namespace, fromPVC, toPVC string) error {
 	}
 
 	if !strings.Contains(out.String(), "Migration succeeded") {
-		fmt.Println(out.String())
+		fmt.Println("\n"+out.String())
 		return errors.New("pv migration failed")
 	}
 
-	fmt.Println(out.String())
+	fmt.Println("\n"+out.String())
 	return nil
 }
 
