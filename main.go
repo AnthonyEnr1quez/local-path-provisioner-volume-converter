@@ -2,21 +2,13 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"os"
-	"strings"
+	"strconv"
 
 	corev1 "k8s.io/api/core/v1"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/remotecommand"
-
-	_ "embed"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/AnthonyEnr1quez/local-path-provisioner-volume-converter/internal/kube"
@@ -39,21 +31,22 @@ func main() {
 		return n.Name, charts
 	})
 
-	nsNamesWithHCCount := lo.FilterMap(lo.Entries(helmChartsByNamespace), func(n lo.Entry[string, []unstructured.Unstructured], _ int) (string, bool) {
-		if len(n.Value) != 0 {
-			return fmt.Sprintf("%s: %d charts", n.Key, len(n.Value)), true
-		}
-		return "", false
-	})
+	// nsNamesWithHCCount := lo.FilterMap(lo.Entries(helmChartsByNamespace), func(n lo.Entry[string, []unstructured.Unstructured], _ int) (string, bool) {
+	// 	if len(n.Value) != 0 {
+	// 		return fmt.Sprintf("%s: %d charts", n.Key, len(n.Value)), true
+	// 	}
+	// 	return "", false
+	// })
 
-	var selectedNS1 string
+	var selectedNS string
 	prompt := &survey.Select{
 		Message: "Select namespace",
-		Options: nsNamesWithHCCount,
+		Options: lo.Keys(helmChartsByNamespace),
+		Description: func(value string, index int) string {
+			return strconv.Itoa(len(helmChartsByNamespace[value]))
+		},
 	}
-	survey.AskOne(prompt, &selectedNS1)
-
-	selectedNS := selectedNS1[:strings.IndexByte(selectedNS1, ':')]
+	survey.AskOne(prompt, &selectedNS)
 
 	selectedCharts := helmChartsByNamespace[selectedNS]
 
@@ -86,20 +79,24 @@ func main() {
 		return "", nil
 	})
 
-	helmChartNameWithVolCount := lo.FilterMap(lo.Entries(volumesByHelmChartName), func(n lo.Entry[string, []corev1.Volume], _ int) (string, bool) {
-		if len(n.Value) != 0 {
-			return fmt.Sprintf("%s: %d volumes", n.Key, len(n.Value)), true
-		}
-		return "", false
-	})
+	// helmChartNameWithVolCount := lo.FilterMap(lo.Entries(volumesByHelmChartName), func(n lo.Entry[string, []corev1.Volume], _ int) (string, bool) {
+	// 	if len(n.Value) != 0 {
+	// 		return fmt.Sprintf("%s: %d volumes", n.Key, len(n.Value)), true
+	// 	}
+	// 	return "", false
+	// })
 
-	var selectedChart1 string
+	var selectedChart string
 	prompt = &survey.Select{
 		Message: "Select Chart",
-		Options: helmChartNameWithVolCount,
+		Options: lo.Keys(volumesByHelmChartName),
+		Description: func(value string, index int) string {
+			return strconv.Itoa(len(volumesByHelmChartName[value]))
+		},
 	}
-	survey.AskOne(prompt, &selectedChart1)
-	selectedChart := selectedChart1[:strings.IndexByte(selectedChart1, ':')]
+	survey.AskOne(prompt, &selectedChart)
+
+	os.Exit(1)
 
 	for _, vol := range volumesByHelmChartName[selectedChart] {
 		pvcName := vol.PersistentVolumeClaim.ClaimName
@@ -183,41 +180,4 @@ func main() {
 
 		fmt.Print("asdf")
 	}
-}
-
-func writeExtraFile(cs kubernetes.Interface, config *rest.Config, namespace, podname string) {
-	cmd := []string{
-		"/bin/sh",
-		"-c",
-		"echo \"Hello World!\" > /config/hello.txt",
-	}
-
-	req := cs.CoreV1().RESTClient().Post().Resource("pods").Namespace(namespace).Name(podname).SubResource("exec")
-	option := &corev1.PodExecOptions{
-		Command: cmd,
-		Stdin:   true,
-		Stdout:  true,
-		Stderr:  true,
-		TTY:     true,
-	}
-
-	req.VersionedParams(
-		option,
-		scheme.ParameterCodec,
-	)
-	exec, err := remotecommand.NewSPDYExecutor(config, "POST", req.URL())
-	if err != nil {
-		fmt.Println(err)
-	}
-	r, _ := io.Pipe()
-	err = exec.Stream(remotecommand.StreamOptions{
-		Stdin:  r,
-		Stdout: os.Stdout,
-		Stderr: os.Stderr,
-		Tty:    false,
-	})
-	if err != nil {
-		fmt.Println(err)
-	}
-	fmt.Println("Files Written")
 }
