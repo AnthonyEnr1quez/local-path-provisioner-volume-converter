@@ -15,7 +15,7 @@ import (
 	"github.com/samber/lo"
 )
 
-/// TODO just throw it all in while loop until they quit
+// TODO just throw it all in while loop until they quit
 func main() {
 	err := kube.CreateTempFiles()
 	if err != nil {
