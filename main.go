@@ -192,7 +192,7 @@ func selectChart(cw *kube.ClientWrapper, charts []unstructured.Unstructured) ([]
 }
 
 func selectVolume(volumes []*corev1.PersistentVolume) (*corev1.PersistentVolume, string) {
-	volsByPVCName := lo.Associate(volumes, func(v *corev1.PersistentVolume) (string, *corev1.PersistentVolume){
+	volsByPVCName := lo.Associate(volumes, func(v *corev1.PersistentVolume) (string, *corev1.PersistentVolume) {
 		return v.Spec.ClaimRef.Name, v
 	})
 
