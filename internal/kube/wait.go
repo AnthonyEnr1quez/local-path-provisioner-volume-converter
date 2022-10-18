@@ -28,8 +28,7 @@ func (cw *ClientWrapper) IsPVCBound(namespace, pvcName string) wait.ConditionFun
 		case corev1.ClaimBound:
 			pv, _ := cw.GetPVFromPVC(pvc)
 			if pv.Spec.PersistentVolumeSource.Local == nil {
-				// TODO handle, sometimes randomly happens to me?
-				fmt.Printf("%s is not a local volume", pvcName)
+				return false, nil
 			}
 			fmt.Printf("\nNew PVC %s bound\n", pvcName)
 			return true, nil
