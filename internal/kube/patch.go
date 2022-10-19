@@ -52,7 +52,7 @@ func (hcp HelmChartPatcher) getValues(uc map[string]interface{}, chartName strin
 	return
 }
 
-func (hcp HelmChartPatcher) getPayload(vals map[string]interface{}, pvcName string) (payload []byte, patchType types.PatchType, err error) {
+func (hcp HelmChartPatcher) getPayload(vals map[string]interface{}, _ string) (payload []byte, patchType types.PatchType, err error) {
 	yaml, err := yaml.Marshal(vals)
 	if err != nil {
 		return
@@ -148,7 +148,7 @@ func NewPatcher(chart unstructured.Unstructured) (Patcher, error) {
 	}
 }
 
-func patchChart(patchy Patcher, dynamicClient dynamic.Interface, namespace string, chartIn unstructured.Unstructured, chartName, pvcName string, patchFunc func(map[string]interface{}, string), tempDeleteFlag bool) error {
+func patchChart(patchy Patcher, dynamicClient dynamic.Interface, namespace, chartName, pvcName string, patchFunc func(map[string]interface{}, string)) error {
 	chartsClient := dynamicClient.Resource(patchy.getResource()).Namespace(namespace)
 	chart, err := chartsClient.Get(context.Background(), chartName, metav1.GetOptions{})
 	if err != nil {
@@ -173,7 +173,7 @@ func patchChart(patchy Patcher, dynamicClient dynamic.Interface, namespace strin
 	return nil
 }
 
-func (cw *ClientWrapper) AddTempPVC(patchy Patcher, namespace string, chart unstructured.Unstructured, chartName, pvcName string) (string, error) {
+func (cw *ClientWrapper) AddTempPVC(patchy Patcher, namespace, chartName, pvcName string) (string, error) {
 	tempPVCName := fmt.Sprint(pvcName, "-temp")
 	patch := func(p map[string]interface{}, pvcName string) {
 		p[tempPVCName] = map[string]interface{}{
@@ -186,7 +186,7 @@ func (cw *ClientWrapper) AddTempPVC(patchy Patcher, namespace string, chart unst
 			},
 		}
 	}
-	err := patchChart(patchy, cw.dc, namespace, chart, chartName, pvcName, patch, false)
+	err := patchChart(patchy, cw.dc, namespace, chartName, pvcName, patch)
 	if err != nil {
 		return "", err
 	}
@@ -194,22 +194,22 @@ func (cw *ClientWrapper) AddTempPVC(patchy Patcher, namespace string, chart unst
 	return fmt.Sprintf("%s-%s", chartName, tempPVCName), nil
 }
 
-func (cw *ClientWrapper) UpdateOriginalPVC(patchy Patcher, namespace string, chart unstructured.Unstructured, chartName, pvcName string) error {
+func (cw *ClientWrapper) UpdateOriginalPVC(patchy Patcher, namespace, chartName, pvcName string) error {
 	patch := func(p map[string]interface{}, pvcName string) {
 		p[pvcName].(map[string]interface{})["annotations"] = map[string]interface{}{
 			"volumeType": "local",
 		}
 	}
 
-	return patchChart(patchy, cw.dc, namespace, chart, chartName, pvcName, patch, false)
+	return patchChart(patchy, cw.dc, namespace, chartName, pvcName, patch)
 }
 
-func (cw *ClientWrapper) UnbindTempPVC(patchy Patcher, namespace string, chart unstructured.Unstructured, chartName, pvcName string) error {
+func (cw *ClientWrapper) UnbindTempPVC(patchy Patcher, namespace, chartName, pvcName string) error {
 	patch := func(p map[string]interface{}, pvcName string) {
 		delete(p, pvcName)
 	}
 
-	return patchChart(patchy, cw.dc, namespace, chart, chartName, fmt.Sprint(pvcName, "-temp"), patch, true)
+	return patchChart(patchy, cw.dc, namespace, chartName, pvcName, patch)
 }
 
 // TODO

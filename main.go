@@ -51,7 +51,7 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	tempPVCName, err := cw.AddTempPVC(patchy, selectedNamespace, selectedChart, selectedChartName, volumeName)
+	tempPVCName, err := cw.AddTempPVC(patchy, selectedNamespace, selectedChartName, volumeName)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
@@ -81,7 +81,7 @@ func main() {
 		log.Fatalln(err.Error())
 	}
 
-	err = cw.UpdateOriginalPVC(patchy, selectedNamespace, selectedChart, selectedChartName, volumeName)
+	err = cw.UpdateOriginalPVC(patchy, selectedNamespace, selectedChartName, volumeName)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
@@ -106,7 +106,7 @@ func main() {
 		log.Fatalln(err.Error())
 	}
 
-	err = cw.UnbindTempPVC(patchy, selectedNamespace, selectedChart, selectedChartName, volumeName)
+	err = cw.UnbindTempPVC(patchy, selectedNamespace, selectedChartName, volumeName)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
