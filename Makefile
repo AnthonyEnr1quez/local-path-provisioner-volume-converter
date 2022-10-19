@@ -18,6 +18,10 @@ go:
 	make create-cluster
 	./scripts/go_init.sh
 
+flux:
+	make create-cluster
+	./scripts/flux.sh
+
 .PHONY: create-cluster
 create-cluster:
 	k3d cluster create mycluster

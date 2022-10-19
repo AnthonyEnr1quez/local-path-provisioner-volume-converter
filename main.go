@@ -15,7 +15,7 @@ import (
 	"github.com/samber/lo"
 )
 
-// TODO just throw it all in while loop until they quit
+// TODO just throw it all in while loop until they quit, print and restart if no applicable charts
 func main() {
 	err := kube.CreateTempFiles()
 	if err != nil {
@@ -36,7 +36,7 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	volumes, selectedChartName := selectChart(&cw, selectedCharts)
+	volumes, selectedChart, selectedChartName := selectChart(&cw, selectedCharts)
 
 	volume, volumeName := selectVolume(volumes)
 
@@ -45,7 +45,13 @@ func main() {
 
 	fmt.Printf("\nUpdating PVC %s from host path volume to local volume\n\n", pvcName)
 
-	tempPVCName, err := cw.AddTempPVC(selectedNamespace, selectedChartName, volumeName)
+	// TODO add call to flux cli to stop watching the flux chart
+	patchy, err := kube.NewPatcher(selectedChart)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	tempPVCName, err := cw.AddTempPVC(patchy, selectedNamespace, selectedChart, volumeName)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
@@ -75,7 +81,7 @@ func main() {
 		log.Fatalln(err.Error())
 	}
 
-	err = cw.UpdateOriginalPVC(selectedNamespace, selectedChartName, volumeName)
+	err = cw.UpdateOriginalPVC(patchy, selectedNamespace, selectedChart, volumeName)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
@@ -100,7 +106,7 @@ func main() {
 		log.Fatalln(err.Error())
 	}
 
-	err = cw.UnbindTempPVC(selectedNamespace, selectedChartName, volumeName)
+	err = cw.UnbindTempPVC(patchy, selectedNamespace, selectedChart, volumeName)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
@@ -125,8 +131,18 @@ func selectNamespace(cw *kube.ClientWrapper) (chartNamespace string, charts []un
 	}
 
 	helmChartsByNamespace := lo.Associate(namespaces, func(n corev1.Namespace) (string, []unstructured.Unstructured) {
-		charts, err := cw.GetHelmCharts(n.Name)
-		if err != nil || len(charts) == 0 {
+		helmReleases, _ := cw.GetFluxHelmReleases(n.Name)
+		// TODO handle error
+		// if err != nil {
+		// 	return "", nil
+		// }
+		charts, _ := cw.GetHelmCharts(n.Name)
+		// if err != nil {
+		// 	return "", nil
+		// }
+
+		charts = append(charts, helmReleases...)
+		if len(charts) == 0 {
 			return "", nil
 		}
 
@@ -146,8 +162,35 @@ func selectNamespace(cw *kube.ClientWrapper) (chartNamespace string, charts []un
 	return selectedNamespace, filtered[selectedNamespace], nil
 }
 
-func selectChart(cw *kube.ClientWrapper, charts []unstructured.Unstructured) ([]*corev1.PersistentVolume, string) {
+func selectChart(cw *kube.ClientWrapper, charts []unstructured.Unstructured) ([]*corev1.PersistentVolume, unstructured.Unstructured, string) {
+	helmChartByName := lo.KeyBy(charts, func(chart unstructured.Unstructured) string {
+		return chart.Object["metadata"].(map[string]interface{})["name"].(string)
+	})
+
 	pvsByHelmChartName := lo.Associate(charts, func(chart unstructured.Unstructured) (string, []*corev1.PersistentVolume) {
+		// TODO use unstructured.NestedString instead of map interface casting
+		switch chart.GetKind() {
+		case "HelmRelease":
+			chartName := chart.Object["metadata"].(map[string]interface{})["name"].(string)
+			targetNamespace := chart.Object["metadata"].(map[string]interface{})["namespace"].(string)
+
+			pvcs, _ := cw.GetPVCsByChartName(targetNamespace, chartName)
+			volumesToUpdate := lo.FilterMap(pvcs, func(pvc corev1.PersistentVolumeClaim, _ int) (*corev1.PersistentVolume, bool) {
+				pv, err := cw.GetPVFromPVC(&pvc)
+				if err != nil {
+					return nil, false
+				}
+
+				if pv.Spec.PersistentVolumeSource.HostPath != nil {
+					return pv, true
+				}
+
+				return nil, false
+			})
+
+			return chartName, volumesToUpdate
+		}
+		
 		// TODO this is temp for helm chart, will have to update for flux parsing
 		if chart.Object["spec"].(map[string]interface{})["targetNamespace"] != nil {
 			chartName := chart.Object["metadata"].(map[string]interface{})["name"].(string)
@@ -173,6 +216,32 @@ func selectChart(cw *kube.ClientWrapper, charts []unstructured.Unstructured) ([]
 		return "", nil
 	})
 
+	// pvsByHelmChartName := lo.Associate(charts, func(chart unstructured.Unstructured) (string, []*corev1.PersistentVolume) {
+	// 	// TODO this is temp for helm chart, will have to update for flux parsing
+	// 	if chart.Object["spec"].(map[string]interface{})["targetNamespace"] != nil {
+	// 		chartName := chart.Object["metadata"].(map[string]interface{})["name"].(string)
+	// 		targetNamespace := chart.Object["spec"].(map[string]interface{})["targetNamespace"].(string)
+
+	// 		pvcs, _ := cw.GetPVCsByChartName(targetNamespace, chartName)
+	// 		volumesToUpdate := lo.FilterMap(pvcs, func(pvc corev1.PersistentVolumeClaim, _ int) (*corev1.PersistentVolume, bool) {
+	// 			pv, err := cw.GetPVFromPVC(&pvc)
+	// 			if err != nil {
+	// 				return nil, false
+	// 			}
+
+	// 			if pv.Spec.PersistentVolumeSource.HostPath != nil {
+	// 				return pv, true
+	// 			}
+
+	// 			return nil, false
+	// 		})
+
+	// 		return chartName, volumesToUpdate
+	// 	}
+
+	// 	return "", nil
+	// })
+
 	filtered := lo.OmitByKeys(pvsByHelmChartName, []string{""})
 
 	selectedChart := prompt.AskOne(
@@ -183,7 +252,7 @@ func selectChart(cw *kube.ClientWrapper, charts []unstructured.Unstructured) ([]
 		},
 	)
 
-	return filtered[selectedChart], selectedChart
+	return filtered[selectedChart], helmChartByName[selectedChart], selectedChart
 }
 
 func selectVolume(volumes []*corev1.PersistentVolume) (*corev1.PersistentVolume, string) {

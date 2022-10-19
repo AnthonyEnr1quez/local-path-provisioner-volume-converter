@@ -40,7 +40,7 @@ func (cw *ClientWrapper) IsPVCBound(namespace, pvcName string) wait.ConditionFun
 
 func (cw *ClientWrapper) IsPodReady(namespace, name string) wait.ConditionFunc {
 	return func() (bool, error) {
-		fmt.Printf(".") // progress bar!
+		fmt.Print(".")
 
 		pod, err := cw.GetPodByName(namespace, name)
 		if err != nil {
@@ -59,7 +59,7 @@ func (cw *ClientWrapper) IsPodReady(namespace, name string) wait.ConditionFunc {
 
 func (cw *ClientWrapper) isPodScaled(namespace, name string) wait.ConditionFunc {
 	return func() (bool, error) {
-		fmt.Printf(".") // progress bar!
+		fmt.Print(".")
 
 		_, err := cw.GetPodByName(namespace, name)
 		if err != nil && strings.Contains(err.Error(), "not ready yet") {

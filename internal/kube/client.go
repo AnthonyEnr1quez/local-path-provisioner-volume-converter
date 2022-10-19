@@ -23,6 +23,12 @@ var helmChartResource = schema.GroupVersionResource{
 	Resource: "helmcharts",
 }
 
+var fluxResource = schema.GroupVersionResource{
+	Group:    "helm.toolkit.fluxcd.io",
+	Version:  "v2beta1",
+	Resource: "helmreleases",
+}
+
 type ClientWrapper struct {
 	dc dynamic.Interface
 	cs kubernetes.Interface
@@ -51,8 +57,8 @@ func GetClientWrapper() ClientWrapper {
 }
 
 func getKubeconfig() (*rest.Config, error) {
-	configPath, exists := os.LookupEnv("KUBECONFIG")
-	if !exists {
+	configPath, found := os.LookupEnv("KUBECONFIG")
+	if !found {
 		return nil, errors.New("KUBECONFIG env var does not exist")
 	}
 
@@ -77,6 +83,15 @@ func (cw *ClientWrapper) GetNamespaces() ([]corev1.Namespace, error) {
 
 func (cw *ClientWrapper) GetHelmCharts(namespace string) ([]unstructured.Unstructured, error) {
 	helmCharts, err := cw.dc.Resource(helmChartResource).Namespace(namespace).List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	return helmCharts.Items, nil
+}
+
+func (cw *ClientWrapper) GetFluxHelmReleases(namespace string) ([]unstructured.Unstructured, error) {
+	helmCharts, err := cw.dc.Resource(fluxResource).Namespace(namespace).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}

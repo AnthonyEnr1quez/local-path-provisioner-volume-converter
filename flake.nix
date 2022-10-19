@@ -67,6 +67,7 @@
               glibc
 
               kube3d
+              fluxcd
             ];
           };
         };
