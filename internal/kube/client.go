@@ -17,17 +17,18 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-var helmChartResource = schema.GroupVersionResource{
-	Group:    "helm.cattle.io",
-	Version:  "v1",
-	Resource: "helmcharts",
-}
-
-var fluxResource = schema.GroupVersionResource{
-	Group:    "helm.toolkit.fluxcd.io",
-	Version:  "v2beta1",
-	Resource: "helmreleases",
-}
+var (
+	HelmChartResource = schema.GroupVersionResource{
+		Group:    "helm.cattle.io",
+		Version:  "v1",
+		Resource: "helmcharts",
+	}
+	FluxHelmReleaseResource = schema.GroupVersionResource{
+		Group:    "helm.toolkit.fluxcd.io",
+		Version:  "v2beta1",
+		Resource: "helmreleases",
+	}
+)
 
 type ClientWrapper struct {
 	dc dynamic.Interface
@@ -81,22 +82,13 @@ func (cw *ClientWrapper) GetNamespaces() ([]corev1.Namespace, error) {
 	return namespaces.Items, nil
 }
 
-func (cw *ClientWrapper) GetHelmCharts(namespace string) ([]unstructured.Unstructured, error) {
-	helmCharts, err := cw.dc.Resource(helmChartResource).Namespace(namespace).List(context.Background(), metav1.ListOptions{})
+func (cw *ClientWrapper) GetResourceList(namespace string, resource schema.GroupVersionResource) ([]unstructured.Unstructured, error) {
+	resources, err := cw.dc.Resource(resource).Namespace(namespace).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
 
-	return helmCharts.Items, nil
-}
-
-func (cw *ClientWrapper) GetFluxHelmReleases(namespace string) ([]unstructured.Unstructured, error) {
-	helmCharts, err := cw.dc.Resource(fluxResource).Namespace(namespace).List(context.Background(), metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-
-	return helmCharts.Items, nil
+	return resources.Items, nil
 }
 
 func (cw *ClientWrapper) GetPodByName(namespace, name string) (corev1.Pod, error) {
@@ -158,7 +150,7 @@ func (cw *ClientWrapper) ScaleDeployment(namespace, name string, replicas int) e
 	return nil
 }
 
-// DA BIN
+// TODO DA BIN
 
 // func getPVCs(cs kubernetes.Interface, namespace string) []corev1.PersistentVolumeClaim {
 // 	pvcs, _ := cs.CoreV1().PersistentVolumeClaims(namespace).List(context.Background(), metav1.ListOptions{})

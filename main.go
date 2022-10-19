@@ -51,7 +51,7 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	tempPVCName, err := cw.AddTempPVC(patchy, selectedNamespace, selectedChart, volumeName)
+	tempPVCName, err := cw.AddTempPVC(patchy, selectedNamespace, selectedChart, selectedChartName, volumeName)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
@@ -81,7 +81,7 @@ func main() {
 		log.Fatalln(err.Error())
 	}
 
-	err = cw.UpdateOriginalPVC(patchy, selectedNamespace, selectedChart, volumeName)
+	err = cw.UpdateOriginalPVC(patchy, selectedNamespace, selectedChart, selectedChartName, volumeName)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
@@ -106,7 +106,7 @@ func main() {
 		log.Fatalln(err.Error())
 	}
 
-	err = cw.UnbindTempPVC(patchy, selectedNamespace, selectedChart, volumeName)
+	err = cw.UnbindTempPVC(patchy, selectedNamespace, selectedChart, selectedChartName, volumeName)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
@@ -124,29 +124,28 @@ func main() {
 	fmt.Println("DONE")
 }
 
-func selectNamespace(cw *kube.ClientWrapper) (chartNamespace string, charts []unstructured.Unstructured, err error) {
+func selectNamespace(cw *kube.ClientWrapper) (string, []unstructured.Unstructured, error) {
 	namespaces, err := cw.GetNamespaces()
 	if err != nil {
 		return "", nil, err
 	}
 
 	helmChartsByNamespace := lo.Associate(namespaces, func(n corev1.Namespace) (string, []unstructured.Unstructured) {
-		helmReleases, _ := cw.GetFluxHelmReleases(n.Name)
-		// TODO handle error
-		// if err != nil {
-		// 	return "", nil
-		// }
-		charts, _ := cw.GetHelmCharts(n.Name)
-		// if err != nil {
-		// 	return "", nil
-		// }
-
-		charts = append(charts, helmReleases...)
-		if len(charts) == 0 {
+		helmReleases, err := cw.GetResourceList(n.Name, kube.FluxHelmReleaseResource)
+		if err != nil {
+			return "", nil
+		}
+		helmCharts, err := cw.GetResourceList(n.Name, kube.HelmChartResource)
+		if err != nil {
 			return "", nil
 		}
 
-		return n.Name, charts
+		helmCharts = append(helmCharts, helmReleases...)
+		if len(helmCharts) == 0 {
+			return "", nil
+		}
+
+		return n.Name, helmCharts
 	})
 
 	filtered := lo.OmitByKeys(helmChartsByNamespace, []string{""})
@@ -164,83 +163,50 @@ func selectNamespace(cw *kube.ClientWrapper) (chartNamespace string, charts []un
 
 func selectChart(cw *kube.ClientWrapper, charts []unstructured.Unstructured) ([]*corev1.PersistentVolume, unstructured.Unstructured, string) {
 	helmChartByName := lo.KeyBy(charts, func(chart unstructured.Unstructured) string {
-		return chart.Object["metadata"].(map[string]interface{})["name"].(string)
+		chartName, found, err := unstructured.NestedString(chart.UnstructuredContent(), "metadata", "name")
+		if err != nil || !found {
+			return ""
+		}
+
+		return chartName
 	})
 
 	pvsByHelmChartName := lo.Associate(charts, func(chart unstructured.Unstructured) (string, []*corev1.PersistentVolume) {
-		// TODO use unstructured.NestedString instead of map interface casting
+		chartName, found, err := unstructured.NestedString(chart.UnstructuredContent(), "metadata", "name")
+		if err != nil || !found {
+			return "", nil
+		}
+		var namespace string
+
+		var path []string
 		switch chart.GetKind() {
 		case "HelmRelease":
-			chartName := chart.Object["metadata"].(map[string]interface{})["name"].(string)
-			targetNamespace := chart.Object["metadata"].(map[string]interface{})["namespace"].(string)
-
-			pvcs, _ := cw.GetPVCsByChartName(targetNamespace, chartName)
-			volumesToUpdate := lo.FilterMap(pvcs, func(pvc corev1.PersistentVolumeClaim, _ int) (*corev1.PersistentVolume, bool) {
-				pv, err := cw.GetPVFromPVC(&pvc)
-				if err != nil {
-					return nil, false
-				}
-
-				if pv.Spec.PersistentVolumeSource.HostPath != nil {
-					return pv, true
-				}
-
-				return nil, false
-			})
-
-			return chartName, volumesToUpdate
-		}
-		
-		// TODO this is temp for helm chart, will have to update for flux parsing
-		if chart.Object["spec"].(map[string]interface{})["targetNamespace"] != nil {
-			chartName := chart.Object["metadata"].(map[string]interface{})["name"].(string)
-			targetNamespace := chart.Object["spec"].(map[string]interface{})["targetNamespace"].(string)
-
-			pvcs, _ := cw.GetPVCsByChartName(targetNamespace, chartName)
-			volumesToUpdate := lo.FilterMap(pvcs, func(pvc corev1.PersistentVolumeClaim, _ int) (*corev1.PersistentVolume, bool) {
-				pv, err := cw.GetPVFromPVC(&pvc)
-				if err != nil {
-					return nil, false
-				}
-
-				if pv.Spec.PersistentVolumeSource.HostPath != nil {
-					return pv, true
-				}
-
-				return nil, false
-			})
-
-			return chartName, volumesToUpdate
+			path = []string{"metadata", "namespace"}
+		case "HelmChart":
+			path = []string{"spec", "targetNamespace"}
 		}
 
-		return "", nil
+		namespace, found, err = unstructured.NestedString(chart.UnstructuredContent(), path...)
+		if err != nil || !found {
+			return "", nil
+		}
+
+		pvcs, _ := cw.GetPVCsByChartName(namespace, chartName)
+		volumesToUpdate := lo.FilterMap(pvcs, func(pvc corev1.PersistentVolumeClaim, _ int) (*corev1.PersistentVolume, bool) {
+			pv, err := cw.GetPVFromPVC(&pvc)
+			if err != nil {
+				return nil, false
+			}
+
+			if pv.Spec.PersistentVolumeSource.HostPath != nil {
+				return pv, true
+			}
+
+			return nil, false
+		})
+
+		return chartName, volumesToUpdate
 	})
-
-	// pvsByHelmChartName := lo.Associate(charts, func(chart unstructured.Unstructured) (string, []*corev1.PersistentVolume) {
-	// 	// TODO this is temp for helm chart, will have to update for flux parsing
-	// 	if chart.Object["spec"].(map[string]interface{})["targetNamespace"] != nil {
-	// 		chartName := chart.Object["metadata"].(map[string]interface{})["name"].(string)
-	// 		targetNamespace := chart.Object["spec"].(map[string]interface{})["targetNamespace"].(string)
-
-	// 		pvcs, _ := cw.GetPVCsByChartName(targetNamespace, chartName)
-	// 		volumesToUpdate := lo.FilterMap(pvcs, func(pvc corev1.PersistentVolumeClaim, _ int) (*corev1.PersistentVolume, bool) {
-	// 			pv, err := cw.GetPVFromPVC(&pvc)
-	// 			if err != nil {
-	// 				return nil, false
-	// 			}
-
-	// 			if pv.Spec.PersistentVolumeSource.HostPath != nil {
-	// 				return pv, true
-	// 			}
-
-	// 			return nil, false
-	// 		})
-
-	// 		return chartName, volumesToUpdate
-	// 	}
-
-	// 	return "", nil
-	// })
 
 	filtered := lo.OmitByKeys(pvsByHelmChartName, []string{""})
 

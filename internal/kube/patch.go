@@ -24,7 +24,7 @@ type Patcher interface {
 type HelmChartPatcher struct{}
 
 func (hcp HelmChartPatcher) getResource() schema.GroupVersionResource {
-	return helmChartResource
+	return HelmChartResource
 }
 
 func (hcp HelmChartPatcher) getValues(uc map[string]interface{}, chartName string) (valuesMap, persistence map[string]interface{}, err error) {
@@ -77,7 +77,7 @@ func (hcp HelmChartPatcher) getPayload(vals map[string]interface{}, pvcName stri
 type HelmReleasePatcher struct{}
 
 func (hrp HelmReleasePatcher) getResource() schema.GroupVersionResource {
-	return fluxResource
+	return FluxHelmReleaseResource
 }
 
 func (hrp HelmReleasePatcher) getValues(uc map[string]interface{}, chartName string) (valuesMap, persistence map[string]interface{}, err error) {
@@ -138,14 +138,6 @@ func (hrp HelmReleasePatcher) getPayload(vals map[string]interface{}, pvcName st
 }
 
 func NewPatcher(chart unstructured.Unstructured) (Patcher, error) {
-	// chartName, found, err := unstructured.NestedString(chart.UnstructuredContent(), "metadata", "name")
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// if !found {
-	// 	return nil, errors.New("chart name not found")
-	// }
-
 	switch chart.GetKind() {
 	case "HelmChart":
 		return HelmChartPatcher{}, nil
@@ -156,9 +148,7 @@ func NewPatcher(chart unstructured.Unstructured) (Patcher, error) {
 	}
 }
 
-func patchChart(patchy Patcher, dynamicClient dynamic.Interface, namespace string, chartIn unstructured.Unstructured, pvcName string, patchFunc func(map[string]interface{}, string), tempDeleteFlag bool) error {
-	chartName := chartIn.Object["metadata"].(map[string]interface{})["name"].(string)
-
+func patchChart(patchy Patcher, dynamicClient dynamic.Interface, namespace string, chartIn unstructured.Unstructured, chartName, pvcName string, patchFunc func(map[string]interface{}, string), tempDeleteFlag bool) error {
 	chartsClient := dynamicClient.Resource(patchy.getResource()).Namespace(namespace)
 	chart, err := chartsClient.Get(context.Background(), chartName, metav1.GetOptions{})
 	if err != nil {
@@ -183,7 +173,7 @@ func patchChart(patchy Patcher, dynamicClient dynamic.Interface, namespace strin
 	return nil
 }
 
-func (cw *ClientWrapper) AddTempPVC(patchy Patcher, namespace string, chart unstructured.Unstructured, pvcName string) (string, error) {
+func (cw *ClientWrapper) AddTempPVC(patchy Patcher, namespace string, chart unstructured.Unstructured, chartName, pvcName string) (string, error) {
 	tempPVCName := fmt.Sprint(pvcName, "-temp")
 	patch := func(p map[string]interface{}, pvcName string) {
 		p[tempPVCName] = map[string]interface{}{
@@ -196,31 +186,30 @@ func (cw *ClientWrapper) AddTempPVC(patchy Patcher, namespace string, chart unst
 			},
 		}
 	}
-	err := patchChart(patchy, cw.dc, namespace, chart, pvcName, patch, false)
+	err := patchChart(patchy, cw.dc, namespace, chart, chartName, pvcName, patch, false)
 	if err != nil {
 		return "", err
 	}
 
-	chartName := chart.Object["metadata"].(map[string]interface{})["name"].(string)
 	return fmt.Sprintf("%s-%s", chartName, tempPVCName), nil
 }
 
-func (cw *ClientWrapper) UpdateOriginalPVC(patchy Patcher, namespace string, chart unstructured.Unstructured, pvcName string) error {
+func (cw *ClientWrapper) UpdateOriginalPVC(patchy Patcher, namespace string, chart unstructured.Unstructured, chartName, pvcName string) error {
 	patch := func(p map[string]interface{}, pvcName string) {
 		p[pvcName].(map[string]interface{})["annotations"] = map[string]interface{}{
 			"volumeType": "local",
 		}
 	}
 
-	return patchChart(patchy, cw.dc, namespace, chart, pvcName, patch, false)
+	return patchChart(patchy, cw.dc, namespace, chart, chartName, pvcName, patch, false)
 }
 
-func (cw *ClientWrapper) UnbindTempPVC(patchy Patcher, namespace string, chart unstructured.Unstructured, pvcName string) error {
+func (cw *ClientWrapper) UnbindTempPVC(patchy Patcher, namespace string, chart unstructured.Unstructured, chartName, pvcName string) error {
 	patch := func(p map[string]interface{}, pvcName string) {
 		delete(p, pvcName)
 	}
 
-	return patchChart(patchy, cw.dc, namespace, chart, fmt.Sprint(pvcName, "-temp"), patch, true)
+	return patchChart(patchy, cw.dc, namespace, chart, chartName, fmt.Sprint(pvcName, "-temp"), patch, true)
 }
 
 // TODO
