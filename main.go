@@ -9,127 +9,130 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/AnthonyEnr1quez/local-path-provisioner-volume-converter/internal/kube"
 	"github.com/AnthonyEnr1quez/local-path-provisioner-volume-converter/internal/prompt"
 	"github.com/samber/lo"
 )
 
-// TODO just throw it all in while loop until they quit, print and restart if no applicable charts
+// TODO add print for what to add to chart source
 func main() {
-	err := kube.CreateTempFiles()
-	if err != nil {
-		log.Fatalln(err.Error())
-	}
-
-	defer func() {
-		err = kube.CleanUpTempFiles()
+	for {
+		err := kube.CreateTempFiles()
 		if err != nil {
 			log.Fatalln(err.Error())
 		}
-	}()
 
-	cw := kube.GetClientWrapper()
+		defer func() {
+			err = kube.CleanUpTempFiles()
+			if err != nil {
+				log.Fatalln(err.Error())
+			}
+		}()
 
-	selectedNamespace, selectedCharts, err := selectNamespace(&cw)
-	if err != nil {
-		log.Fatalln(err)
+		cw := kube.GetClientWrapper()
+
+		selectedNamespace, selectedCharts, err := selectNamespace(&cw)
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		volumes, selectedChart, selectedChartName, err := selectChart(&cw, selectedCharts)
+		if err != nil {
+			fmt.Println(err.Error() + "\n")
+			continue
+		}
+
+		volume, volumeName, err := selectVolume(volumes)
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		pvcName := volume.Spec.ClaimRef.Name
+		pvcNamespace := volume.Spec.ClaimRef.Namespace
+
+		fmt.Printf("\nUpdating PVC %s from host path volume to local volume\n\n", pvcName)
+
+		// TODO add call to flux cli to stop watching the flux chart
+		patchy, err := kube.NewPatcher(selectedChart)
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		tempPVCName, err := cw.AddTempPVC(patchy, selectedNamespace, selectedChartName, volumeName)
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+
+		err = kube.WaitFor(cw.IsPVCBound(pvcNamespace, tempPVCName))
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+
+		err = kube.WaitFor(cw.IsPodReady(pvcNamespace, selectedChartName))
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+
+		err = cw.ScaleDeployment(pvcNamespace, selectedChartName, 0)
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+
+		err = kube.PvMigrater(pvcNamespace, pvcName, tempPVCName)
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+
+		err = cw.DeletePVC(pvcNamespace, pvcName)
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+
+		err = cw.UpdateOriginalPVC(patchy, selectedNamespace, selectedChartName, volumeName)
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+
+		err = kube.WaitFor(cw.IsPVCBound(pvcNamespace, pvcName))
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+
+		err = kube.WaitFor(cw.IsPodReady(pvcNamespace, selectedChartName))
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+
+		err = cw.ScaleDeployment(pvcNamespace, selectedChartName, 0)
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+
+		err = kube.PvMigrater(pvcNamespace, tempPVCName, pvcName)
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+
+		err = cw.UnbindTempPVC(patchy, selectedNamespace, selectedChartName, volumeName)
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+
+		err = cw.DeletePVC(pvcNamespace, tempPVCName)
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+
+		err = kube.WaitFor(cw.IsPodReady(pvcNamespace, selectedChartName))
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+
+		fmt.Println("DONE")
 	}
-
-	volumes, selectedChart, selectedChartName, err := selectChart(&cw, selectedCharts)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	volume, volumeName, err := selectVolume(volumes)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	pvcName := volume.Spec.ClaimRef.Name
-	pvcNamespace := volume.Spec.ClaimRef.Namespace
-
-	fmt.Printf("\nUpdating PVC %s from host path volume to local volume\n\n", pvcName)
-
-	// TODO add call to flux cli to stop watching the flux chart
-	patchy, err := kube.NewPatcher(selectedChart)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	tempPVCName, err := cw.AddTempPVC(patchy, selectedNamespace, selectedChartName, volumeName)
-	if err != nil {
-		log.Fatalln(err.Error())
-	}
-
-	err = kube.WaitFor(cw.IsPVCBound(pvcNamespace, tempPVCName))
-	if err != nil {
-		log.Fatalln(err.Error())
-	}
-
-	err = kube.WaitFor(cw.IsPodReady(pvcNamespace, selectedChartName))
-	if err != nil {
-		log.Fatalln(err.Error())
-	}
-
-	err = cw.ScaleDeployment(pvcNamespace, selectedChartName, 0)
-	if err != nil {
-		log.Fatalln(err.Error())
-	}
-
-	err = kube.PvMigrater(pvcNamespace, pvcName, tempPVCName)
-	if err != nil {
-		log.Fatalln(err.Error())
-	}
-
-	err = cw.DeletePVC(pvcNamespace, pvcName)
-	if err != nil {
-		log.Fatalln(err.Error())
-	}
-
-	err = cw.UpdateOriginalPVC(patchy, selectedNamespace, selectedChartName, volumeName)
-	if err != nil {
-		log.Fatalln(err.Error())
-	}
-
-	err = kube.WaitFor(cw.IsPVCBound(pvcNamespace, pvcName))
-	if err != nil {
-		log.Fatalln(err.Error())
-	}
-
-	err = kube.WaitFor(cw.IsPodReady(pvcNamespace, selectedChartName))
-	if err != nil {
-		log.Fatalln(err.Error())
-	}
-
-	err = cw.ScaleDeployment(pvcNamespace, selectedChartName, 0)
-	if err != nil {
-		log.Fatalln(err.Error())
-	}
-
-	err = kube.PvMigrater(pvcNamespace, tempPVCName, pvcName)
-	if err != nil {
-		log.Fatalln(err.Error())
-	}
-
-	err = cw.UnbindTempPVC(patchy, selectedNamespace, selectedChartName, volumeName)
-	if err != nil {
-		log.Fatalln(err.Error())
-	}
-
-	err = cw.DeletePVC(pvcNamespace, tempPVCName)
-	if err != nil {
-		log.Fatalln(err.Error())
-	}
-
-	err = kube.WaitFor(cw.IsPodReady(pvcNamespace, selectedChartName))
-	if err != nil {
-		log.Fatalln(err.Error())
-	}
-
-	fmt.Println("DONE")
 }
 
 func selectNamespace(cw *kube.ClientWrapper) (string, []unstructured.Unstructured, error) {
@@ -215,6 +218,10 @@ func selectChart(cw *kube.ClientWrapper, charts []unstructured.Unstructured) ([]
 
 			return nil, false
 		})
+
+		if len(volumesToUpdate) == 0 {
+			return "", nil
+		}
 
 		return chartName, volumesToUpdate
 	})

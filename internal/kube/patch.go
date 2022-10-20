@@ -209,7 +209,7 @@ func (cw *ClientWrapper) UnbindTempPVC(patchy Patcher, namespace, chartName, pvc
 		delete(p, pvcName)
 	}
 
-	return patchChart(patchy, cw.dc, namespace, chartName, pvcName, patch)
+	return patchChart(patchy, cw.dc, namespace, chartName, fmt.Sprint(pvcName, "-temp"), patch)
 }
 
 // TODO
