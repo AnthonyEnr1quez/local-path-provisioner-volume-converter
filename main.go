@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strconv"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -19,7 +18,7 @@ import (
 
 func main() {
 	fmt.Print("Use \"Ctrl+C\" to quit\n\n")
-	
+
 	for {
 		err := kube.CreateTempFiles()
 		if err != nil {
@@ -171,7 +170,8 @@ func selectNamespace(cw *kube.ClientWrapper) (string, []unstructured.Unstructure
 		"Select namespace",
 		lo.Keys(filtered),
 		func(value string, index int) string {
-			return strconv.Itoa(len(filtered[value]))
+			count := len(filtered[value])
+			return fmt.Sprintf("%d possible resources", count)
 		},
 	)
 
@@ -238,7 +238,8 @@ func selectChart(cw *kube.ClientWrapper, charts []unstructured.Unstructured) ([]
 		"Select Chart",
 		lo.Keys(filtered),
 		func(value string, index int) string {
-			return strconv.Itoa(len(filtered[value]))
+			count := len(filtered[value])
+			return fmt.Sprintf("%d host path volumes", count)
 		},
 	)
 
