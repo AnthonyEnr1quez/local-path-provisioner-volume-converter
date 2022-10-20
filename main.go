@@ -17,8 +17,9 @@ import (
 	"github.com/samber/lo"
 )
 
-// TODO add print for what to add to chart source
 func main() {
+	fmt.Print("Use \"Ctrl+C\" to quit\n\n")
+	
 	for {
 		err := kube.CreateTempFiles()
 		if err != nil {
@@ -53,7 +54,7 @@ func main() {
 		pvcName := volume.Spec.ClaimRef.Name
 		pvcNamespace := volume.Spec.ClaimRef.Namespace
 
-		fmt.Printf("\nUpdating PVC %s from host path volume to local volume\n\n", pvcName)
+		fmt.Printf("\nConverting PVC %s from host path volume to local volume\n\n", pvcName)
 
 		// TODO add call to flux cli to stop watching the flux chart
 		patchy, err := kube.NewPatcher(selectedChart)
@@ -131,7 +132,15 @@ func main() {
 			log.Fatalln(err.Error())
 		}
 
-		fmt.Println("DONE")
+		fmt.Printf("\nPVC %s converted\n\n", pvcName)
+
+		fmt.Print("Make sure to add the following block to the PVC declaration of your resource definition file if used.\n\n")
+		fmt.Print("annotations: \n  volumeType: local\n\n")
+
+		// TODO flux resume?
+		// if _, ok := patchy.(kube.HelmReleasePatcher); ok {
+		// 	fmt.Print("hr")
+		// }
 	}
 }
 
