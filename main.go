@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/AnthonyEnr1quez/local-path-provisioner-volume-converter/internal/kube"
 	"github.com/AnthonyEnr1quez/local-path-provisioner-volume-converter/internal/prompt"
@@ -36,9 +38,15 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	volumes, selectedChart, selectedChartName := selectChart(&cw, selectedCharts)
+	volumes, selectedChart, selectedChartName, err := selectChart(&cw, selectedCharts)
+	if err != nil {
+		log.Fatalln(err)
+	}
 
-	volume, volumeName := selectVolume(volumes)
+	volume, volumeName, err := selectVolume(volumes)
+	if err != nil {
+		log.Fatalln(err)
+	}
 
 	pvcName := volume.Spec.ClaimRef.Name
 	pvcNamespace := volume.Spec.ClaimRef.Namespace
@@ -132,11 +140,11 @@ func selectNamespace(cw *kube.ClientWrapper) (string, []unstructured.Unstructure
 
 	helmChartsByNamespace := lo.Associate(namespaces, func(n corev1.Namespace) (string, []unstructured.Unstructured) {
 		helmReleases, err := cw.GetResourceList(n.Name, kube.FluxHelmReleaseResource)
-		if err != nil {
+		if err != nil && !apierrors.IsNotFound(err) {
 			return "", nil
 		}
 		helmCharts, err := cw.GetResourceList(n.Name, kube.HelmChartResource)
-		if err != nil {
+		if err != nil && !apierrors.IsNotFound(err) {
 			return "", nil
 		}
 
@@ -149,8 +157,11 @@ func selectNamespace(cw *kube.ClientWrapper) (string, []unstructured.Unstructure
 	})
 
 	filtered := lo.OmitByKeys(helmChartsByNamespace, []string{""})
+	if len(filtered) == 0 {
+		return "", nil, errors.New("No namespaces that have supported resources")
+	}
 
-	selectedNamespace := prompt.AskOne(
+	selectedNamespace, err := prompt.AskOne(
 		"Select namespace",
 		lo.Keys(filtered),
 		func(value string, index int) string {
@@ -158,10 +169,10 @@ func selectNamespace(cw *kube.ClientWrapper) (string, []unstructured.Unstructure
 		},
 	)
 
-	return selectedNamespace, filtered[selectedNamespace], nil
+	return selectedNamespace, filtered[selectedNamespace], err
 }
 
-func selectChart(cw *kube.ClientWrapper, charts []unstructured.Unstructured) ([]*corev1.PersistentVolume, unstructured.Unstructured, string) {
+func selectChart(cw *kube.ClientWrapper, charts []unstructured.Unstructured) ([]*corev1.PersistentVolume, unstructured.Unstructured, string, error) {
 	helmChartByName := lo.KeyBy(charts, func(chart unstructured.Unstructured) string {
 		chartName, found, err := unstructured.NestedString(chart.UnstructuredContent(), "metadata", "name")
 		if err != nil || !found {
@@ -209,8 +220,11 @@ func selectChart(cw *kube.ClientWrapper, charts []unstructured.Unstructured) ([]
 	})
 
 	filtered := lo.OmitByKeys(pvsByHelmChartName, []string{""})
+	if len(filtered) == 0 {
+		return nil, unstructured.Unstructured{}, "", errors.New("No charts that have host path volumes")
+	}
 
-	selectedChart := prompt.AskOne(
+	selectedChart, err := prompt.AskOne(
 		"Select Chart",
 		lo.Keys(filtered),
 		func(value string, index int) string {
@@ -218,15 +232,15 @@ func selectChart(cw *kube.ClientWrapper, charts []unstructured.Unstructured) ([]
 		},
 	)
 
-	return filtered[selectedChart], helmChartByName[selectedChart], selectedChart
+	return filtered[selectedChart], helmChartByName[selectedChart], selectedChart, err
 }
 
-func selectVolume(volumes []*corev1.PersistentVolume) (*corev1.PersistentVolume, string) {
+func selectVolume(volumes []*corev1.PersistentVolume) (*corev1.PersistentVolume, string, error) {
 	volsByPVCName := lo.Associate(volumes, func(v *corev1.PersistentVolume) (string, *corev1.PersistentVolume) {
 		return v.Spec.ClaimRef.Name, v
 	})
 
-	selectedVolumeName := prompt.AskOne("Select Volume", lo.Keys(volsByPVCName), nil)
+	selectedVolumeName, err := prompt.AskOne("Select Volume", lo.Keys(volsByPVCName), nil)
 
-	return volsByPVCName[selectedVolumeName], selectedVolumeName[strings.IndexByte(selectedVolumeName, '-')+1:]
+	return volsByPVCName[selectedVolumeName], selectedVolumeName[strings.IndexByte(selectedVolumeName, '-')+1:], err
 }
