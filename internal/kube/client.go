@@ -206,7 +206,7 @@ func (cw *ClientWrapper) ScaleDeployment(namespace, name string, replicas int) e
 func (cw *ClientWrapper) CreateJob(namespace string, job *batchv1.Job) (string, error) {
 	job, err := cw.cs.BatchV1().Jobs(namespace).Create(context.Background(), job, metav1.CreateOptions{})
 	if err != nil {
-
+		return "", nil
 	}
 	return job.Name, nil
 }
