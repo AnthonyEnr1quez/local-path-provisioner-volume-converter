@@ -8,6 +8,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
@@ -53,6 +54,27 @@ func (cw *ClientWrapper) IsPodReady(namespace, name string) wait.ConditionFunc {
 				return true, nil
 			}
 		}
+		
+		return false, nil
+	}
+}
+
+func (cw *ClientWrapper) IsJobFinished(namespace, name string) wait.ConditionFunc {
+	return func() (bool, error) {
+		fmt.Print(".")
+
+		job, err := cw.getJobByName(namespace, name)
+		if err != nil {
+			return false, nil
+		}
+
+		for _, cond := range job.Status.Conditions {
+			if cond.Type == batchv1.JobComplete && cond.Status == "True" {
+				fmt.Printf("\n%s job complete\n", name)
+				return true, nil
+			}
+		}
+
 		return false, nil
 	}
 }

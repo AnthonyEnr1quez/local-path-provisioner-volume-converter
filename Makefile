@@ -25,8 +25,7 @@ flux:
 .PHONY: create-cluster
 create-cluster:
 	k3d cluster create mycluster
-	k3d image import -c mycluster rancher/local-path-provisioner:dev
-	kubectl -n kube-system set image deployment/local-path-provisioner local-path-provisioner=rancher/local-path-provisioner:dev
+	kubectl -n kube-system set image deployment/local-path-provisioner local-path-provisioner=anthonyenr1quez/local-path-provisioner:latest
 
 .PHONY: init-velero
 init-velero:

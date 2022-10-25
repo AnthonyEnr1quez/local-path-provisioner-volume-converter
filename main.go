@@ -20,18 +20,6 @@ func main() {
 	fmt.Print("Use \"Ctrl+C\" to quit\n\n")
 
 	for {
-		err := kube.CreateTempFiles()
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-
-		defer func() {
-			err = kube.CleanUpTempFiles()
-			if err != nil {
-				log.Fatalln(err.Error())
-			}
-		}()
-
 		cw := kube.GetClientWrapper()
 
 		selectedNamespace, selectedCharts, err := selectNamespace(&cw)
@@ -53,88 +41,112 @@ func main() {
 		pvcName := volume.Spec.ClaimRef.Name
 		pvcNamespace := volume.Spec.ClaimRef.Namespace
 
-		fmt.Printf("\nConverting PVC %s from host path volume to local volume\n\n", pvcName)
-
-		patchy, err := kube.NewPatcher(selectedChart)
-		if err != nil {
-			log.Fatalln(err)
-		}
-
-		tempPVCName, err := cw.AddTempPVC(patchy, selectedNamespace, selectedChartName, volumeName)
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-
-		err = kube.WaitFor(cw.IsPVCBound(pvcNamespace, tempPVCName))
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-
-		err = kube.WaitFor(cw.IsPodReady(pvcNamespace, selectedChartName))
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-
-		err = cw.ScaleDeployment(pvcNamespace, selectedChartName, 0)
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-
-		err = kube.PvMigrater(pvcNamespace, pvcName, tempPVCName)
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-
-		err = cw.DeletePVC(pvcNamespace, pvcName)
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-
-		err = cw.UpdateOriginalPVC(patchy, selectedNamespace, selectedChartName, volumeName)
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-
-		err = kube.WaitFor(cw.IsPVCBound(pvcNamespace, pvcName))
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-
-		err = kube.WaitFor(cw.IsPodReady(pvcNamespace, selectedChartName))
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-
-		err = cw.ScaleDeployment(pvcNamespace, selectedChartName, 0)
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-
-		err = kube.PvMigrater(pvcNamespace, tempPVCName, pvcName)
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-
-		err = cw.UnbindTempPVC(patchy, selectedNamespace, selectedChartName, volumeName)
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-
-		err = cw.DeletePVC(pvcNamespace, tempPVCName)
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-
-		err = kube.WaitFor(cw.IsPodReady(pvcNamespace, selectedChartName))
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-
-		fmt.Printf("\nPVC %s converted\n\n", pvcName)
-
-		fmt.Print("Make sure to add the following block to the PVC declaration of your resource definition file if used.\n\n")
-		fmt.Print("annotations: \n  volumeType: local\n\n")
+		exec(cw, selectedChart, pvcName, selectedNamespace, selectedChartName, volumeName, pvcNamespace)
 	}
+}
+
+func exec(cw kube.ClientWrapper, selectedChart unstructured.Unstructured, pvcName, selectedNamespace, selectedChartName, volumeName, pvcNamespace string) {
+	err := cw.CreateNamespace(kube.MigrationNamespace)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	err = cw.CreateServiceAccount(kube.MigrationNamespace, kube.MigrationServiceAccount)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	fmt.Printf("\nConverting PVC %s from host path volume to local volume\n\n", pvcName)
+
+	patchy, err := kube.NewPatcher(selectedChart)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	tempPVCName, err := cw.AddTempPVC(patchy, selectedNamespace, selectedChartName, volumeName)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	err = kube.WaitFor(cw.IsPVCBound(pvcNamespace, tempPVCName))
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	err = kube.WaitFor(cw.IsPodReady(pvcNamespace, selectedChartName))
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	err = cw.ScaleDeployment(pvcNamespace, selectedChartName, 0)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	jobName, err := cw.MigrateJob(pvcNamespace, pvcName, tempPVCName)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	err = kube.WaitFor(cw.IsJobFinished(kube.MigrationNamespace, jobName))
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	err = cw.DeletePVC(pvcNamespace, pvcName)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	err = cw.UpdateOriginalPVC(patchy, selectedNamespace, selectedChartName, volumeName)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	err = kube.WaitFor(cw.IsPVCBound(pvcNamespace, pvcName))
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	err = kube.WaitFor(cw.IsPodReady(pvcNamespace, selectedChartName))
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	err = cw.ScaleDeployment(pvcNamespace, selectedChartName, 0)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	jobName, err = cw.MigrateJob(pvcNamespace, tempPVCName, pvcName)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	err = kube.WaitFor(cw.IsJobFinished(kube.MigrationNamespace, jobName))
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	err = cw.UnbindTempPVC(patchy, selectedNamespace, selectedChartName, volumeName)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	err = cw.DeletePVC(pvcNamespace, tempPVCName)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	err = kube.WaitFor(cw.IsPodReady(pvcNamespace, selectedChartName))
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	fmt.Printf("\nPVC %s converted\n\n", pvcName)
+
+	fmt.Print("Make sure to add the following block to the PVC declaration of your resource definition file if used.\n\n")
+	fmt.Print("annotations: \n  volumeType: local\n\n")
 }
 
 func selectNamespace(cw *kube.ClientWrapper) (string, []unstructured.Unstructured, error) {

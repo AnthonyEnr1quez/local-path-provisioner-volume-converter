@@ -7,7 +7,9 @@ import (
 	"log"
 	"os"
 
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -51,6 +53,14 @@ func GetClientWrapper() ClientWrapper {
 		log.Fatalln("unable to init clientset")
 	}
 
+	return ClientWrapper{
+		dc: dc,
+		cs: cs,
+	}
+}
+
+// TODO DELETE
+func TempCW(cs kubernetes.Interface, dc dynamic.Interface) ClientWrapper {
 	return ClientWrapper{
 		dc: dc,
 		cs: cs,
@@ -116,7 +126,50 @@ func (cw *ClientWrapper) GetPVCsByChartName(namespace, name string) ([]corev1.Pe
 	return pvcs.Items, err
 }
 
+func (cw *ClientWrapper) getJobByName(namespace, name string) (*batchv1.Job, error) {
+	return cw.cs.BatchV1().Jobs(namespace).Get(context.Background(), name, metav1.GetOptions{})
+}
+
 // SETTERS
+
+func (cw *ClientWrapper) CreateNamespace(name string) error {
+	_, err := cw.cs.CoreV1().Namespaces().Create(context.Background(), &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}}, metav1.CreateOptions{})
+	return err
+}
+
+func (cw *ClientWrapper) CreateServiceAccount(namespace, name string) error {
+	sa := &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+	}
+	_, err := cw.cs.CoreV1().ServiceAccounts(namespace).Create(context.Background(), sa, metav1.CreateOptions{})
+	if err != nil {
+		return err
+	}
+
+	crb := &rbacv1.ClusterRoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		RoleRef: rbacv1.RoleRef{
+			APIGroup: rbacv1.GroupName,
+			Kind:     "ClusterRole",
+			Name:     "edit",
+		},
+		Subjects: []rbacv1.Subject{
+			{
+				Kind:      rbacv1.ServiceAccountKind,
+				Namespace: namespace,
+				Name:      name,
+			},
+		},
+	}
+	_, err = cw.cs.RbacV1().ClusterRoleBindings().Create(context.Background(), crb, metav1.CreateOptions{})
+
+	return err
+}
 
 func (cw *ClientWrapper) DeletePVC(namespace, name string) error {
 	deletePolicy := metav1.DeletePropagationForeground
@@ -148,6 +201,14 @@ func (cw *ClientWrapper) ScaleDeployment(namespace, name string, replicas int) e
 
 	fmt.Printf("\n%s deployment finished scaling\n", name)
 	return nil
+}
+
+func (cw *ClientWrapper) CreateJob(namespace string, job *batchv1.Job) (string, error) {
+	job, err := cw.cs.BatchV1().Jobs(namespace).Create(context.Background(), job, metav1.CreateOptions{})
+	if err != nil {
+
+	}
+	return job.Name, nil
 }
 
 // TODO DA BIN

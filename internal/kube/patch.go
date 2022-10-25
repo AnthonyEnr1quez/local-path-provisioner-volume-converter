@@ -180,7 +180,7 @@ func (cw *ClientWrapper) AddTempPVC(patchy Patcher, namespace, chartName, pvcNam
 			"enabled":    true,
 			"retain":     true,
 			"accessMode": "ReadWriteOnce",
-			"size":       "1Gi",
+			"size":       "1Gi", // TODO, read actual val somehow
 			"annotations": map[string]interface{}{
 				"volumeType": "local",
 			},

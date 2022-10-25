@@ -1,81 +1,46 @@
 package kube
 
 import (
-	"bytes"
-	_ "embed"
-	"errors"
-	"fmt"
-	"os"
-	"os/exec"
-	"strings"
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
-	tmpDirName = "local-path-provisioner-volume-converter"
-	tmpBinName = "pv-migrate"
+	// TODO should this be so tightly coupled?
+	MigrationNamespace      = "pv-migrate"
+	MigrationServiceAccount = "pv-migrate-edit-account"
 )
 
-//go:embed bin/pv-migrate
-var pvMigrateBin []byte
-
-func getCachePath() (string, error) {
-	userCachePath, err := os.UserCacheDir()
-	if err != nil {
-		return "", err
-	}
-
-	cachePath := fmt.Sprintf("%s/%s", userCachePath, tmpDirName)
-	return cachePath, nil
-}
-
-func CreateTempFiles() error {
-	CleanUpTempFiles()
-	cachePath, err := getCachePath()
-	if err != nil {
-		return err
-	}
-
-	err = os.Mkdir(cachePath, os.ModePerm)
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(fmt.Sprintf("%s/%s", cachePath, tmpBinName), pvMigrateBin, 0755)
-}
-
-func CleanUpTempFiles() error {
-	cachePath, err := getCachePath()
-	if err != nil {
-		return err
-	}
-
-	return os.RemoveAll(cachePath)
-}
-
 // TODO need -d on second write? https://github.com/utkuozdemir/pv-migrate/blob/master/USAGE.md
-func PvMigrater(namespace, fromPVC, toPVC string) error {
-	cachePath, err := getCachePath()
-	if err != nil {
-		return err
+func (cw *ClientWrapper) MigrateJob(namespace, fromPVC, toPVC string) (string, error) {
+	var backOffLimit int32 = 0
+
+	jobSpec := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: "pv-migrater-",
+			Namespace:    MigrationNamespace,
+		},
+		Spec: batchv1.JobSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:    "zoinks", // TODO
+							Image:   "utkuozdemir/pv-migrate:v1.0.0",
+							Command: []string{"pv-migrate"},
+							Args:    []string{"migrate", fromPVC, toPVC, "-n", namespace, "-N", namespace},
+						},
+					},
+					RestartPolicy:      corev1.RestartPolicyNever,
+					ServiceAccountName: MigrationServiceAccount,
+				},
+			},
+			BackoffLimit: &backOffLimit, //TODO
+		},
 	}
 
-	cmd := exec.Command(fmt.Sprintf("%s/%s", cachePath, tmpBinName), "migrate", fromPVC, toPVC, "-n", namespace, "-N", namespace)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-
-	if err := cmd.Run(); err != nil {
-		if exitError, ok := err.(*exec.ExitError); ok {
-			return exitError
-		}
-	}
-
-	if !strings.Contains(out.String(), "Migration succeeded") {
-		fmt.Println("\n" + out.String())
-		return errors.New("pv migration failed")
-	}
-
-	fmt.Println("\n" + out.String())
-	return nil
+	return cw.CreateJob(MigrationNamespace, jobSpec)
 }
 
 // TODO

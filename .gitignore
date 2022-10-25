@@ -1,5 +1,6 @@
 .direnv/
 .vscode/
+__debug_bin
 
 result
 vendor/
