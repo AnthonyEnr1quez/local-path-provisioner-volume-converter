@@ -17,9 +17,10 @@
             version = "0.0.1";
 
             modSha256 = lib.fakeSha256;
-            vendorSha256 = "AIpT5qcP2PGy1JBQyo8DVN0poqC+r9KvtwobgIsWCPI=";
+            vendorSha256 = "iU0RRIL5Vkxvs9SqIxT3xhfiwBPIbhrjK1NuoqU/0wU=";
 
             src = ./.;
+            checkPhase = ""; #todo
           };
         };
 
