@@ -137,6 +137,10 @@ func (cw *ClientWrapper) CreateNamespace(name string) error {
 	return err
 }
 
+func (cw *ClientWrapper) DeleteNamespace(name string) error {
+	return cw.cs.CoreV1().Namespaces().Delete(context.Background(), name, metav1.DeleteOptions{})
+}
+
 func (cw *ClientWrapper) CreateServiceAccount(namespace, name string) error {
 	sa := &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{

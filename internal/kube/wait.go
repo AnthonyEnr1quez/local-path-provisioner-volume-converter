@@ -28,6 +28,7 @@ func (cw *ClientWrapper) IsPVCBound(namespace, pvcName string) wait.ConditionFun
 		switch pvc.Status.Phase {
 		case corev1.ClaimBound:
 			pv, _ := cw.GetPVFromPVC(pvc)
+			// TODO possibly recreate volume?
 			if pv.Spec.PersistentVolumeSource.Local == nil {
 				return false, nil
 			}

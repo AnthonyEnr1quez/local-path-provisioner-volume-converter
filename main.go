@@ -19,9 +19,21 @@ import (
 func main() {
 	fmt.Print("Use \"Ctrl+C\" to quit\n\n")
 
-	for {
-		cw := kube.GetClientWrapper()
+	cw := kube.GetClientWrapper()
 
+	// todo for testing :(
+	err := cw.CreateNamespace(kube.MigrationNamespace)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer cw.DeleteNamespace(kube.MigrationNamespace)
+
+	err = cw.CreateServiceAccount(kube.MigrationNamespace, kube.MigrationServiceAccount)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	for {
 		selectedNamespace, selectedCharts, err := selectNamespace(&cw)
 		if err != nil {
 			log.Fatalln(err)
@@ -46,16 +58,6 @@ func main() {
 }
 
 func exec(cw kube.ClientWrapper, selectedChart unstructured.Unstructured, pvcName, selectedNamespace, selectedChartName, volumeName, pvcNamespace string) {
-	err := cw.CreateNamespace(kube.MigrationNamespace)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	err = cw.CreateServiceAccount(kube.MigrationNamespace, kube.MigrationServiceAccount)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
 	fmt.Printf("\nConverting PVC %s from host path volume to local volume\n\n", pvcName)
 
 	patchy, err := kube.NewPatcher(selectedChart)
