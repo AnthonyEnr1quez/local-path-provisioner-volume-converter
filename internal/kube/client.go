@@ -175,6 +175,10 @@ func (cw *ClientWrapper) CreateServiceAccount(namespace, name string) error {
 	return err
 }
 
+func (cw *ClientWrapper) DeleteCRB(name string) error { 
+	return cw.cs.RbacV1().ClusterRoleBindings().Delete(context.Background(), name, metav1.DeleteOptions{})
+}
+
 func (cw *ClientWrapper) DeletePVC(namespace, name string) error {
 	deletePolicy := metav1.DeletePropagationForeground
 	err := cw.cs.CoreV1().PersistentVolumeClaims(namespace).Delete(context.Background(), name, metav1.DeleteOptions{PropagationPolicy: &deletePolicy})

@@ -11,6 +11,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
+	"github.com/AlecAivazis/survey/v2/terminal"
 	"github.com/AnthonyEnr1quez/local-path-provisioner-volume-converter/internal/kube"
 	"github.com/AnthonyEnr1quez/local-path-provisioner-volume-converter/internal/prompt"
 	"github.com/samber/lo"
@@ -22,11 +23,18 @@ func main() {
 	cw := kube.GetClientWrapper()
 
 	// todo for testing :(
+	// todo for all the other quits during prompt
+	// wait for ns delete and have to delete crb
 	err := cw.CreateNamespace(kube.MigrationNamespace)
 	if err != nil {
 		log.Fatalln(err)
 	}
-	defer cw.DeleteNamespace(kube.MigrationNamespace)
+
+	cleanup := func ()  {
+		cw.DeleteNamespace(kube.MigrationNamespace)
+		cw.DeleteCRB(kube.MigrationServiceAccount)
+	};
+	defer cleanup()
 
 	err = cw.CreateServiceAccount(kube.MigrationNamespace, kube.MigrationServiceAccount)
 	if err != nil {
@@ -36,17 +44,23 @@ func main() {
 	for {
 		selectedNamespace, selectedCharts, err := selectNamespace(&cw)
 		if err != nil {
+			cleanup()
 			log.Fatalln(err)
 		}
 
 		volumes, selectedChart, selectedChartName, err := selectChart(&cw, selectedCharts)
 		if err != nil {
+			if err == terminal.InterruptErr {
+				cleanup()
+				log.Fatal("interrupted")
+			}
 			fmt.Println(err.Error() + "\n")
 			continue
 		}
 
 		volume, volumeName, err := selectVolume(volumes)
 		if err != nil {
+			cleanup()
 			log.Fatalln(err)
 		}
 
