@@ -12,7 +12,7 @@
         packages = flake-utils.lib.flattenTree {
           local-path-provisioner-volume-converter = pkgs.buildGoModule {
             pname = "local-path-provisioner-volume-converter";
-            version = "0.0.2";
+            version = "0.0.3";
 
             modSha256 = pkgs.lib.fakeSha256;
             vendorSha256 = "iU0RRIL5Vkxvs9SqIxT3xhfiwBPIbhrjK1NuoqU/0wU=";
