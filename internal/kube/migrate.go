@@ -26,7 +26,7 @@ func (cw *ClientWrapper) MigrateJob(namespace, fromPVC, toPVC string) (string, e
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:    "zoinks", // TODO
+							Name:    "pv-migrater-job-container",
 							Image:   "utkuozdemir/pv-migrate:v1.0.0",
 							Command: []string{"pv-migrate"},
 							Args:    []string{"migrate", fromPVC, toPVC, "-n", namespace, "-N", namespace},

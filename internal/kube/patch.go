@@ -173,14 +173,14 @@ func patchChart(patchy Patcher, dynamicClient dynamic.Interface, namespace, char
 	return nil
 }
 
-func (cw *ClientWrapper) AddTempPVC(patchy Patcher, namespace, chartName, pvcName string) (string, error) {
+func (cw *ClientWrapper) AddTempPVC(patchy Patcher, namespace, chartName, pvcName, volumeSize string) (string, error) {
 	tempPVCName := fmt.Sprint(pvcName, "-temp")
 	patch := func(p map[string]interface{}, pvcName string) {
 		p[tempPVCName] = map[string]interface{}{
 			"enabled":    true,
 			"retain":     true,
 			"accessMode": "ReadWriteOnce",
-			"size":       "1Gi", // TODO, read actual val somehow
+			"size":       volumeSize,
 			"annotations": map[string]interface{}{
 				"volumeType": "local",
 			},

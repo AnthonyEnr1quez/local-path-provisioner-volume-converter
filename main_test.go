@@ -127,7 +127,7 @@ func TestConversion(t *testing.T) {
 			// t.Parallel()
 			selectedChart, err := createResourceFromFile(dc, test.resourceType, test.resourceLocation)
 			require.NoError(t, err)
-			exec(cw, selectedChart, test.pvcName, test.selectedNamespace, test.selectedChartName, test.volumeName, test.pvcNamespace)
+			exec(cw, selectedChart, test.pvcName, test.selectedNamespace, test.selectedChartName, test.volumeName, test.pvcNamespace, "1Gi")
 		})
 	}
 }

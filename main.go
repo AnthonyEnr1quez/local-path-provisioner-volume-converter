@@ -66,12 +66,13 @@ func main() {
 
 		pvcName := volume.Spec.ClaimRef.Name
 		pvcNamespace := volume.Spec.ClaimRef.Namespace
+		volumeSize := volume.Spec.Capacity.Storage().String()
 
-		exec(cw, selectedChart, pvcName, selectedNamespace, selectedChartName, volumeName, pvcNamespace)
+		exec(cw, selectedChart, pvcName, selectedNamespace, selectedChartName, volumeName, pvcNamespace, volumeSize)
 	}
 }
 
-func exec(cw kube.ClientWrapper, selectedChart unstructured.Unstructured, pvcName, selectedNamespace, selectedChartName, volumeName, pvcNamespace string) {
+func exec(cw kube.ClientWrapper, selectedChart unstructured.Unstructured, pvcName, selectedNamespace, selectedChartName, volumeName, pvcNamespace, volumeSize string) {
 	fmt.Printf("\nConverting PVC %s from host path volume to local volume\n\n", pvcName)
 
 	patchy, err := kube.NewPatcher(selectedChart)
@@ -79,7 +80,7 @@ func exec(cw kube.ClientWrapper, selectedChart unstructured.Unstructured, pvcNam
 		log.Fatalln(err)
 	}
 
-	tempPVCName, err := cw.AddTempPVC(patchy, selectedNamespace, selectedChartName, volumeName)
+	tempPVCName, err := cw.AddTempPVC(patchy, selectedNamespace, selectedChartName, volumeName, volumeSize)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
