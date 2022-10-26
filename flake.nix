@@ -10,8 +10,8 @@
       in rec
       {
         packages = flake-utils.lib.flattenTree {
-          pv-to-local = pkgs.buildGoModule {
-            pname = "pv-to-local";
+          local-path-provisioner-volume-converter = pkgs.buildGoModule {
+            pname = "local-path-provisioner-volume-converter";
             version = "0.0.1";
 
             modSha256 = pkgs.lib.fakeSha256;
@@ -22,7 +22,7 @@
           };
         };
 
-        defaultPackage = packages.pv-to-local;
+        defaultPackage = packages.local-path-provisioner-volume-converter;
 
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
@@ -41,7 +41,6 @@
 
             kube3d
             fluxcd
-            nixpkgs-fmt
           ];
         };
       });
