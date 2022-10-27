@@ -28,14 +28,16 @@ func main() {
 	for {
 		resourceType, resourceNamespace, resourceName, volume, err := prompt.Survey(cw)
 		if err != nil {
-			if err == terminal.InterruptErr {
-				cw.CleanupMigrationObjects() // TODO
-				log.Fatalln(err.Error())
-			}
 			log.Println(err.Error())
+			if err == terminal.InterruptErr {
+				break
+			}
 			continue
 		}
 
-		kube.ConvertVolume(cw, resourceType, resourceNamespace, resourceName, volume)
+		err = kube.ConvertVolume(cw, resourceType, resourceNamespace, resourceName, volume)
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
 	}
 }

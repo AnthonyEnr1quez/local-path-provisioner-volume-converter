@@ -138,7 +138,8 @@ func TestConversion(t *testing.T) {
 			volume, err := cw.GetPVByName(pvc.Spec.VolumeName)
 			require.NoError(t, err)
 
-			kube.ConvertVolume(cw, resource.GetKind(), test.resourceNamespace, test.resourceName, volume)
+			err = kube.ConvertVolume(cw, resource.GetKind(), test.resourceNamespace, test.resourceName, volume)
+			require.NoError(t, err)
 		})
 	}
 }

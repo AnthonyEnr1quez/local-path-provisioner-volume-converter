@@ -11,7 +11,6 @@ const (
 	migrationServiceAccount = "pv-migrate-edit-account"
 )
 
-// todo, add waits
 func (cw *ClientWrapper) CreateMigrationNamespaceAndServiceAccount() error {
 	err := cw.CreateNamespace(migrationNamespace)
 	if err != nil {
@@ -21,7 +20,6 @@ func (cw *ClientWrapper) CreateMigrationNamespaceAndServiceAccount() error {
 	return cw.CreateServiceAccount(migrationNamespace, migrationServiceAccount)
 }
 
-// TODO, add waits
 func (cw *ClientWrapper) CleanupMigrationObjects() error {
 	err := cw.DeleteNamespace(migrationNamespace)
 	if err != nil {
