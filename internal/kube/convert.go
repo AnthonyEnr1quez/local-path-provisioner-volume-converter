@@ -7,8 +7,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-func ConvertVolume(cw ClientWrapper, resourceType, resourceNamespace, resourceName string, volume *corev1.PersistentVolume) (err error) {
-	// TODO
+func ConvertVolume(cw ClientWrapper, resourceNamespace, resourceName string, volume *corev1.PersistentVolume, patcher Patcher) (err error) {
 	pvcName := volume.Spec.ClaimRef.Name
 	volumeName := pvcName[strings.IndexByte(pvcName, '-')+1:]
 	pvcNamespace := volume.Spec.ClaimRef.Namespace
@@ -16,12 +15,7 @@ func ConvertVolume(cw ClientWrapper, resourceType, resourceNamespace, resourceNa
 
 	fmt.Printf("\nConverting PVC %s from host path volume to local volume\n\n", pvcName)
 
-	patchy, err := NewPatcher(resourceType)
-	if err != nil {
-		return
-	}
-
-	tempPVCName, err := cw.AddTempPVC(patchy, resourceNamespace, resourceName, volumeName, volumeSize)
+	tempPVCName, err := cw.AddTempPVC(patcher, resourceNamespace, resourceName, volumeName, volumeSize)
 	if err != nil {
 		return
 	}
@@ -56,7 +50,7 @@ func ConvertVolume(cw ClientWrapper, resourceType, resourceNamespace, resourceNa
 		return
 	}
 
-	err = cw.UpdateOriginalPVC(patchy, resourceNamespace, resourceName, volumeName)
+	err = cw.UpdateOriginalPVC(patcher, resourceNamespace, resourceName, volumeName)
 	if err != nil {
 		return
 	}
@@ -86,7 +80,7 @@ func ConvertVolume(cw ClientWrapper, resourceType, resourceNamespace, resourceNa
 		return
 	}
 
-	err = cw.UnbindTempPVC(patchy, resourceNamespace, resourceName, volumeName)
+	err = cw.UnbindTempPVC(patcher, resourceNamespace, resourceName, volumeName)
 	if err != nil {
 		return
 	}

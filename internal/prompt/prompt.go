@@ -22,13 +22,13 @@ func askOne(msg string, options []string, description func(value string, index i
 	return
 }
 
-func Survey(cw kube.ClientWrapper) (resourceType, resourceNamespace, resourceName string, volume *corev1.PersistentVolume, err error) {
+func Survey(cw kube.ClientWrapper) (resourceNamespace, resourceName string, volume *corev1.PersistentVolume, patcher kube.Patcher, err error) {
 	resourceNamespace, resources, err := selectNamespace(&cw)
 	if err != nil {
 		return
 	}
 
-	resourceType, resourceName, volumes, err := selectResource(&cw, resources)
+	resourceName, volumes, patcher, err := selectResource(&cw, resources)
 	if err != nil {
 		return
 	}
@@ -70,7 +70,7 @@ func selectNamespace(cw *kube.ClientWrapper) (string, []unstructured.Unstructure
 	resourceNamespace, err := askOne(
 		"Select namespace",
 		lo.Keys(filteredResources),
-		func(value string, index int) string {
+		func(value string, _ int) string {
 			count := len(filteredResources[value])
 			return fmt.Sprintf("%d possible resources", count)
 		},
@@ -79,32 +79,28 @@ func selectNamespace(cw *kube.ClientWrapper) (string, []unstructured.Unstructure
 	return resourceNamespace, filteredResources[resourceNamespace], err
 }
 
-func selectResource(cw *kube.ClientWrapper, resources []unstructured.Unstructured) (string, string, []*corev1.PersistentVolume, error) {
-	getResourceName := func(resource unstructured.Unstructured) (name string) {
-		name, _, _ = unstructured.NestedString(resource.UnstructuredContent(), "metadata", "name")
-		return
-	}
-
-	resourceByName := lo.KeyBy(resources, getResourceName)
-
-	pvsByResourceName := lo.Associate(resources, func(resource unstructured.Unstructured) (string, []*corev1.PersistentVolume) {
-		name := getResourceName(resource)
-
-		var path []string
-		switch resource.GetKind() {
-		// todo
-		case "HelmRelease":
-			path = []string{"metadata", "namespace"}
-		case "HelmChart":
-			path = []string{"spec", "targetNamespace"}
-		}
-
-		namespace, found, err := unstructured.NestedString(resource.UnstructuredContent(), path...)
+func selectResource(cw *kube.ClientWrapper, resources []unstructured.Unstructured) (string, []*corev1.PersistentVolume, kube.Patcher, error) {
+	pvsByResourceName := lo.Associate(resources, func(resource unstructured.Unstructured) (string, lo.Tuple2[[]*corev1.PersistentVolume, kube.Patcher]) {
+		name, found, err := unstructured.NestedString(resource.UnstructuredContent(), "metadata", "name")
 		if err != nil || !found {
-			return "", nil
+			return "", lo.T2[[]*corev1.PersistentVolume, kube.Patcher](nil, nil)
 		}
 
-		pvcs, _ := cw.GetPVCsByResourceName(namespace, name)
+		patcher, err := kube.NewPatcher(resource.GetKind())
+		if err != nil {
+			return "", lo.T2[[]*corev1.PersistentVolume, kube.Patcher](nil, nil)
+		}
+
+		namespace, found, err := unstructured.NestedString(resource.UnstructuredContent(), patcher.GetNamespacePath()...)
+		if err != nil || !found {
+			return "", lo.T2[[]*corev1.PersistentVolume, kube.Patcher](nil, nil)
+		}
+
+		pvcs, err := cw.GetPVCsByResourceName(namespace, name)
+		if err != nil {
+			return "", lo.T2[[]*corev1.PersistentVolume, kube.Patcher](nil, nil)
+		}
+
 		volumesToUpdate := lo.FilterMap(pvcs, func(pvc corev1.PersistentVolumeClaim, _ int) (*corev1.PersistentVolume, bool) {
 			pv, err := cw.GetPVByName(pvc.Spec.VolumeName)
 			if err != nil {
@@ -119,29 +115,27 @@ func selectResource(cw *kube.ClientWrapper, resources []unstructured.Unstructure
 		})
 
 		if len(volumesToUpdate) == 0 {
-			return "", nil
+			return "", lo.T2[[]*corev1.PersistentVolume, kube.Patcher](nil, nil)
 		}
 
-		return name, volumesToUpdate
+		return name, lo.T2(volumesToUpdate, patcher)
 	})
 
 	filteredPVs := lo.OmitByKeys(pvsByResourceName, []string{""})
 	if len(filteredPVs) == 0 {
-		return "", "", nil, errors.New("No resources that have host path volumes")
+		return "", nil, nil, errors.New("No resources that have host path volumes")
 	}
 
 	selectedResourceName, err := askOne(
 		"Select Resource",
 		lo.Keys(filteredPVs),
-		func(value string, index int) string {
-			count := len(filteredPVs[value])
+		func(value string, _ int) string {
+			count := len(filteredPVs[value].A)
 			return fmt.Sprintf("%d host path volumes", count)
 		},
 	)
 
-	selectedResource := resourceByName[selectedResourceName]
-
-	return selectedResource.GetKind(), selectedResourceName, filteredPVs[selectedResourceName], err
+	return selectedResourceName, filteredPVs[selectedResourceName].A, filteredPVs[selectedResourceName].B, err
 }
 
 func selectVolume(volumes []*corev1.PersistentVolume) (*corev1.PersistentVolume, error) {

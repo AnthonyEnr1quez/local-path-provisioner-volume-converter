@@ -101,31 +101,34 @@ func TestConversion(t *testing.T) {
 		resourceName      string
 		volumeName        string
 		pvcNamespace      string
+		patcher kube.Patcher
 	}{
 		{
-			resourceType:      "helmreleases",
+			resourceType:      kube.FluxHelmReleaseResource.Resource,
 			resourceLocation:  "yaml/flux/helm-release.yaml",
 			pvcName:           "sonarr-config",
 			resourceNamespace: "test",
 			resourceName:      "sonarr",
 			volumeName:        "config",
 			pvcNamespace:      "test",
+			patcher: kube.HelmReleasePatcher{},
 		},
 		{
-			resourceType:      "helmcharts",
+			resourceType:      kube.HelmChartResource.Resource,
 			resourceLocation:  "yaml/radarr.yaml",
 			pvcName:           "radarr-config",
 			resourceNamespace: "kube-system",
 			resourceName:      "radarr",
 			volumeName:        "config",
 			pvcNamespace:      "test",
+			patcher: kube.HelmChartPatcher{},
 		},
 	}
 	for _, test := range tests {
 		// test := test
 		t.Run(test.resourceType, func(t *testing.T) {
 			// t.Parallel()
-			resource, err := createResourceFromFile(dc, test.resourceType, test.resourceLocation)
+			_, err := createResourceFromFile(dc, test.resourceType, test.resourceLocation)
 			require.NoError(t, err)
 
 			err = kube.WaitFor(cw.IsPodReady(test.pvcNamespace, test.resourceName))
@@ -133,12 +136,13 @@ func TestConversion(t *testing.T) {
 				log.Fatalln(err.Error())
 			}
 
-			pvc, _ := cs.CoreV1().PersistentVolumeClaims(test.pvcNamespace).Get(context.Background(), test.pvcName, metav1.GetOptions{})
+			pvc, err := cw.GetPVCByName(test.pvcNamespace, test.pvcName)
+			require.NoError(t, err)
 
 			volume, err := cw.GetPVByName(pvc.Spec.VolumeName)
 			require.NoError(t, err)
 
-			err = kube.ConvertVolume(cw, resource.GetKind(), test.resourceNamespace, test.resourceName, volume)
+			err = kube.ConvertVolume(cw, test.resourceNamespace, test.resourceName, volume, test.patcher)
 			require.NoError(t, err)
 		})
 	}

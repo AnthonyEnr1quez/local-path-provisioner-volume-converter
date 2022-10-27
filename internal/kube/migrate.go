@@ -53,7 +53,7 @@ func (cw *ClientWrapper) MigrateJob(namespace, fromPVC, toPVC string) (string, e
 					ServiceAccountName: migrationServiceAccount,
 				},
 			},
-			BackoffLimit: &backOffLimit, //TODO
+			BackoffLimit: &backOffLimit,
 		},
 	}
 

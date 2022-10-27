@@ -16,12 +16,17 @@ import (
 )
 
 type Patcher interface {
+	GetNamespacePath() []string
 	getResource() schema.GroupVersionResource
 	getValues(map[string]interface{}, string) (valuesMap, persistence map[string]interface{}, err error)
 	getPayload(map[string]interface{}, string) (payload []byte, patchType types.PatchType, err error)
 }
 
 type HelmChartPatcher struct{}
+
+func (hcp HelmChartPatcher) GetNamespacePath() []string {
+	return []string{"metadata", "namespace"}
+}
 
 func (hcp HelmChartPatcher) getResource() schema.GroupVersionResource {
 	return HelmChartResource
@@ -75,6 +80,10 @@ func (hcp HelmChartPatcher) getPayload(vals map[string]interface{}, _ string) (p
 }
 
 type HelmReleasePatcher struct{}
+
+func (hrp HelmReleasePatcher) GetNamespacePath() []string {
+	return []string{"spec", "targetNamespace"}
+}
 
 func (hrp HelmReleasePatcher) getResource() schema.GroupVersionResource {
 	return FluxHelmReleaseResource

@@ -26,7 +26,7 @@ func main() {
 	defer cw.CleanupMigrationObjects()
 
 	for {
-		resourceType, resourceNamespace, resourceName, volume, err := prompt.Survey(cw)
+		resourceNamespace, resourceName, volume, patcher, err := prompt.Survey(cw)
 		if err != nil {
 			log.Println(err.Error())
 			if err == terminal.InterruptErr {
@@ -35,7 +35,7 @@ func main() {
 			continue
 		}
 
-		err = kube.ConvertVolume(cw, resourceType, resourceNamespace, resourceName, volume)
+		err = kube.ConvertVolume(cw, resourceNamespace, resourceName, volume, patcher)
 		if err != nil {
 			log.Fatalln(err.Error())
 		}

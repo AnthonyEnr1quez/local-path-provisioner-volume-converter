@@ -108,6 +108,10 @@ func (cw *ClientWrapper) GetPVByName(name string) (*corev1.PersistentVolume, err
 	return cw.cs.CoreV1().PersistentVolumes().Get(context.Background(), name, metav1.GetOptions{})
 }
 
+func (cw *ClientWrapper) GetPVCByName(namespace, name string) (*corev1.PersistentVolumeClaim, error) {
+	return cw.cs.CoreV1().PersistentVolumeClaims(namespace).Get(context.Background(), name, metav1.GetOptions{})
+}
+
 func (cw *ClientWrapper) GetPVCsByResourceName(namespace, name string) ([]corev1.PersistentVolumeClaim, error) {
 	pvcs, err := cw.cs.CoreV1().PersistentVolumeClaims(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: fmt.Sprintf("app.kubernetes.io/name=%s", name)})
 	return pvcs.Items, err

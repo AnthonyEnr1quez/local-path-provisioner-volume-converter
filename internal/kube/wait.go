@@ -1,14 +1,12 @@
 package kube
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
@@ -20,8 +18,7 @@ func (cw *ClientWrapper) IsPVCBound(namespace, pvcName string) wait.ConditionFun
 	return func() (bool, error) {
 		fmt.Print(".")
 
-		// TODO
-		pvc, err := cw.cs.CoreV1().PersistentVolumeClaims(namespace).Get(context.Background(), pvcName, metav1.GetOptions{})
+		pvc, err := cw.GetPVCByName(namespace, pvcName)
 		if err != nil {
 			return false, nil
 		}
