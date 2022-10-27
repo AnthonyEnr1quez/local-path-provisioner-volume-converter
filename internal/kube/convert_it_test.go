@@ -1,4 +1,4 @@
-package main
+package kube
 
 import (
 	"bytes"
@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/AnthonyEnr1quez/local-path-provisioner-volume-converter/internal/kube"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -87,7 +86,7 @@ func TestConversion(t *testing.T) {
 	// test ns
 	cs.CoreV1().Namespaces().Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "test"}}, metav1.CreateOptions{})
 
-	cw := kube.GetClientWrapper(restConfig)
+	cw := GetClientWrapper(restConfig)
 
 	err = cw.CreateMigrationNamespaceAndServiceAccount()
 	require.NoError(t, err)
@@ -101,27 +100,27 @@ func TestConversion(t *testing.T) {
 		resourceName      string
 		volumeName        string
 		pvcNamespace      string
-		patcher kube.Patcher
+		patcher           Patcher
 	}{
 		{
-			resourceType:      kube.FluxHelmReleaseResource.Resource,
+			resourceType:      FluxHelmReleaseResource.Resource,
 			resourceLocation:  "yaml/flux/helm-release.yaml",
 			pvcName:           "sonarr-config",
 			resourceNamespace: "test",
 			resourceName:      "sonarr",
 			volumeName:        "config",
 			pvcNamespace:      "test",
-			patcher: kube.HelmReleasePatcher{},
+			patcher:           HelmReleasePatcher{},
 		},
 		{
-			resourceType:      kube.HelmChartResource.Resource,
+			resourceType:      HelmChartResource.Resource,
 			resourceLocation:  "yaml/radarr.yaml",
 			pvcName:           "radarr-config",
 			resourceNamespace: "kube-system",
 			resourceName:      "radarr",
 			volumeName:        "config",
 			pvcNamespace:      "test",
-			patcher: kube.HelmChartPatcher{},
+			patcher:           HelmChartPatcher{},
 		},
 	}
 	for _, test := range tests {
@@ -131,7 +130,7 @@ func TestConversion(t *testing.T) {
 			_, err := createResourceFromFile(dc, test.resourceType, test.resourceLocation)
 			require.NoError(t, err)
 
-			err = kube.WaitFor(cw.IsPodReady(test.pvcNamespace, test.resourceName))
+			err = WaitFor(cw.IsPodReady(test.pvcNamespace, test.resourceName))
 			if err != nil {
 				log.Fatalln(err.Error())
 			}
@@ -142,7 +141,7 @@ func TestConversion(t *testing.T) {
 			volume, err := cw.GetPVByName(pvc.Spec.VolumeName)
 			require.NoError(t, err)
 
-			err = kube.ConvertVolume(cw, test.resourceNamespace, test.resourceName, volume, test.patcher)
+			err = ConvertVolume(cw, test.resourceNamespace, test.resourceName, volume, test.patcher)
 			require.NoError(t, err)
 		})
 	}
