@@ -82,7 +82,7 @@ func TestConversion(t *testing.T) {
 	err = updateProvisionerImage(cs)
 
 	// charts repo
-	_, err = createResourceFromFile(dc, "helmrepositories", "yaml/flux/charts.yaml")
+	_, err = createResourceFromFile(dc, "helmrepositories", "test_data/helm-repository.yaml")
 	// test ns
 	cs.CoreV1().Namespaces().Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "test"}}, metav1.CreateOptions{})
 
@@ -104,7 +104,7 @@ func TestConversion(t *testing.T) {
 	}{
 		{
 			resourceType:      FluxHelmReleaseResource.Resource,
-			resourceLocation:  "yaml/flux/helm-release.yaml",
+			resourceLocation:  "test_data/helm-release.yaml",
 			pvcName:           "sonarr-config",
 			resourceNamespace: "test",
 			resourceName:      "sonarr",
@@ -114,7 +114,7 @@ func TestConversion(t *testing.T) {
 		},
 		{
 			resourceType:      HelmChartResource.Resource,
-			resourceLocation:  "yaml/radarr.yaml",
+			resourceLocation:  "test_data/helm-chart.yaml",
 			pvcName:           "radarr-config",
 			resourceNamespace: "kube-system",
 			resourceName:      "radarr",
