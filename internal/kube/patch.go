@@ -137,8 +137,8 @@ func (hrp HelmReleasePatcher) getPayload(vals map[string]interface{}, pvcName st
 	return
 }
 
-func NewPatcher(chart unstructured.Unstructured) (Patcher, error) {
-	switch chart.GetKind() {
+func NewPatcher(resourceType string) (Patcher, error) {
+	switch resourceType {
 	case "HelmChart":
 		return HelmChartPatcher{}, nil
 	case "HelmRelease":

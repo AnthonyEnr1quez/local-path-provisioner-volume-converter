@@ -20,6 +20,7 @@ func (cw *ClientWrapper) IsPVCBound(namespace, pvcName string) wait.ConditionFun
 	return func() (bool, error) {
 		fmt.Print(".")
 
+		// TODO
 		pvc, err := cw.cs.CoreV1().PersistentVolumeClaims(namespace).Get(context.Background(), pvcName, metav1.GetOptions{})
 		if err != nil {
 			return false, nil
@@ -27,7 +28,7 @@ func (cw *ClientWrapper) IsPVCBound(namespace, pvcName string) wait.ConditionFun
 
 		switch pvc.Status.Phase {
 		case corev1.ClaimBound:
-			pv, _ := cw.GetPVFromPVC(pvc)
+			pv, _ := cw.GetPVByName(pvc.Spec.VolumeName)
 			// TODO possibly recreate volume?
 			if pv.Spec.PersistentVolumeSource.Local == nil {
 				return false, nil

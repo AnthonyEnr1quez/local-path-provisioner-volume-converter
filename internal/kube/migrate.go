@@ -7,29 +7,28 @@ import (
 )
 
 const (
-	// TODO should this be so tightly coupled?
-	MigrationNamespace      = "pv-migrate"
-	MigrationServiceAccount = "pv-migrate-edit-account"
+	migrationNamespace      = "pv-migrate"
+	migrationServiceAccount = "pv-migrate-edit-account"
 )
 
 // todo, add waits
 func (cw *ClientWrapper) CreateMigrationNamespaceAndServiceAccount() error {
-	err := cw.CreateNamespace(MigrationNamespace)
+	err := cw.CreateNamespace(migrationNamespace)
 	if err != nil {
 		return err
 	}
 
-	return cw.CreateServiceAccount(MigrationNamespace, MigrationServiceAccount)
+	return cw.CreateServiceAccount(migrationNamespace, migrationServiceAccount)
 }
 
 // TODO, add waits
 func (cw *ClientWrapper) CleanupMigrationObjects() error {
-	err := cw.DeleteNamespace(MigrationNamespace)
+	err := cw.DeleteNamespace(migrationNamespace)
 	if err != nil {
 		return err
 	}
 
-	return cw.DeleteCRB(MigrationServiceAccount)
+	return cw.DeleteCRB(migrationServiceAccount)
 }
 
 // TODO need -d on second write? https://github.com/utkuozdemir/pv-migrate/blob/master/USAGE.md
@@ -39,7 +38,7 @@ func (cw *ClientWrapper) MigrateJob(namespace, fromPVC, toPVC string) (string, e
 	jobSpec := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: "pv-migrater-",
-			Namespace:    MigrationNamespace,
+			Namespace:    migrationNamespace,
 		},
 		Spec: batchv1.JobSpec{
 			Template: corev1.PodTemplateSpec{
@@ -53,14 +52,14 @@ func (cw *ClientWrapper) MigrateJob(namespace, fromPVC, toPVC string) (string, e
 						},
 					},
 					RestartPolicy:      corev1.RestartPolicyNever,
-					ServiceAccountName: MigrationServiceAccount,
+					ServiceAccountName: migrationServiceAccount,
 				},
 			},
 			BackoffLimit: &backOffLimit, //TODO
 		},
 	}
 
-	return cw.CreateJob(MigrationNamespace, jobSpec)
+	return cw.CreateJob(migrationNamespace, jobSpec)
 }
 
 // TODO

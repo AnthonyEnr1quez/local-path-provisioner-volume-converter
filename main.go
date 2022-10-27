@@ -26,7 +26,7 @@ func main() {
 	defer cw.CleanupMigrationObjects()
 
 	for {
-		selectedChart, pvcName, selectedNamespace, selectedChartName, volumeName, pvcNamespace, volumeSize, err := prompt.Survey(cw)
+		resourceType, resourceNamespace, resourceName, volume, err := prompt.Survey(cw)
 		if err != nil {
 			if err == terminal.InterruptErr {
 				cw.CleanupMigrationObjects() // TODO
@@ -36,6 +36,6 @@ func main() {
 			continue
 		}
 
-		kube.ConvertVolume(cw, selectedChart, pvcName, selectedNamespace, selectedChartName, volumeName, pvcNamespace, volumeSize)
+		kube.ConvertVolume(cw, resourceType, resourceNamespace, resourceName, volume)
 	}
 }

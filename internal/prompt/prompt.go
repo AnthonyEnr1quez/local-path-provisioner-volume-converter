@@ -3,7 +3,6 @@ package prompt
 import (
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/AnthonyEnr1quez/local-path-provisioner-volume-converter/internal/kube"
@@ -23,25 +22,18 @@ func askOne(msg string, options []string, description func(value string, index i
 	return
 }
 
-func Survey(cw kube.ClientWrapper) (selectedChart unstructured.Unstructured, pvcName, selectedNamespace, selectedChartName, volumeName, pvcNamespace, volumeSize string, err error) {
-	selectedNamespace, selectedCharts, err := selectNamespace(&cw)
+func Survey(cw kube.ClientWrapper) (resourceType, resourceNamespace, resourceName string, volume *corev1.PersistentVolume, err error) {
+	resourceNamespace, resources, err := selectNamespace(&cw)
 	if err != nil {
 		return
 	}
 
-	volumes, selectedChart, selectedChartName, err := selectChart(&cw, selectedCharts)
+	resourceType, resourceName, volumes, err := selectResource(&cw, resources)
 	if err != nil {
 		return
 	}
 
-	volume, volumeName, err := selectVolume(volumes)
-	if err != nil {
-		return
-	}
-
-	pvcName = volume.Spec.ClaimRef.Name
-	pvcNamespace = volume.Spec.ClaimRef.Namespace
-	volumeSize = volume.Spec.Capacity.Storage().String()
+	volume, err = selectVolume(volumes)
 
 	return
 }
@@ -52,7 +44,7 @@ func selectNamespace(cw *kube.ClientWrapper) (string, []unstructured.Unstructure
 		return "", nil, err
 	}
 
-	helmChartsByNamespace := lo.Associate(namespaces, func(n corev1.Namespace) (string, []unstructured.Unstructured) {
+	resourcesByNamespace := lo.Associate(namespaces, func(n corev1.Namespace) (string, []unstructured.Unstructured) {
 		helmReleases, err := cw.GetResourceList(n.Name, kube.FluxHelmReleaseResource)
 		if err != nil && !apierrors.IsNotFound(err) {
 			return "", nil
@@ -70,56 +62,51 @@ func selectNamespace(cw *kube.ClientWrapper) (string, []unstructured.Unstructure
 		return n.Name, helmCharts
 	})
 
-	filtered := lo.OmitByKeys(helmChartsByNamespace, []string{""})
-	if len(filtered) == 0 {
+	filteredResources := lo.OmitByKeys(resourcesByNamespace, []string{""})
+	if len(filteredResources) == 0 {
 		return "", nil, errors.New("No namespaces that have supported resources")
 	}
 
-	selectedNamespace, err := askOne(
+	resourceNamespace, err := askOne(
 		"Select namespace",
-		lo.Keys(filtered),
+		lo.Keys(filteredResources),
 		func(value string, index int) string {
-			count := len(filtered[value])
+			count := len(filteredResources[value])
 			return fmt.Sprintf("%d possible resources", count)
 		},
 	)
 
-	return selectedNamespace, filtered[selectedNamespace], err
+	return resourceNamespace, filteredResources[resourceNamespace], err
 }
 
-func selectChart(cw *kube.ClientWrapper, charts []unstructured.Unstructured) ([]*corev1.PersistentVolume, unstructured.Unstructured, string, error) {
-	helmChartByName := lo.KeyBy(charts, func(chart unstructured.Unstructured) string {
-		chartName, found, err := unstructured.NestedString(chart.UnstructuredContent(), "metadata", "name")
-		if err != nil || !found {
-			return ""
-		}
+func selectResource(cw *kube.ClientWrapper, resources []unstructured.Unstructured) (string, string, []*corev1.PersistentVolume, error) {
+	getResourceName := func(resource unstructured.Unstructured) (name string) {
+		name, _, _ = unstructured.NestedString(resource.UnstructuredContent(), "metadata", "name")
+		return
+	}
 
-		return chartName
-	})
+	resourceByName := lo.KeyBy(resources, getResourceName)
 
-	pvsByHelmChartName := lo.Associate(charts, func(chart unstructured.Unstructured) (string, []*corev1.PersistentVolume) {
-		chartName, found, err := unstructured.NestedString(chart.UnstructuredContent(), "metadata", "name")
-		if err != nil || !found {
-			return "", nil
-		}
-		var namespace string
+	pvsByResourceName := lo.Associate(resources, func(resource unstructured.Unstructured) (string, []*corev1.PersistentVolume) {
+		name := getResourceName(resource)
 
 		var path []string
-		switch chart.GetKind() {
+		switch resource.GetKind() {
+		// todo
 		case "HelmRelease":
 			path = []string{"metadata", "namespace"}
 		case "HelmChart":
 			path = []string{"spec", "targetNamespace"}
 		}
 
-		namespace, found, err = unstructured.NestedString(chart.UnstructuredContent(), path...)
+		namespace, found, err := unstructured.NestedString(resource.UnstructuredContent(), path...)
 		if err != nil || !found {
 			return "", nil
 		}
 
-		pvcs, _ := cw.GetPVCsByChartName(namespace, chartName)
+		pvcs, _ := cw.GetPVCsByResourceName(namespace, name)
 		volumesToUpdate := lo.FilterMap(pvcs, func(pvc corev1.PersistentVolumeClaim, _ int) (*corev1.PersistentVolume, bool) {
-			pv, err := cw.GetPVFromPVC(&pvc)
+			pv, err := cw.GetPVByName(pvc.Spec.VolumeName)
 			if err != nil {
 				return nil, false
 			}
@@ -135,32 +122,34 @@ func selectChart(cw *kube.ClientWrapper, charts []unstructured.Unstructured) ([]
 			return "", nil
 		}
 
-		return chartName, volumesToUpdate
+		return name, volumesToUpdate
 	})
 
-	filtered := lo.OmitByKeys(pvsByHelmChartName, []string{""})
-	if len(filtered) == 0 {
-		return nil, unstructured.Unstructured{}, "", errors.New("No charts that have host path volumes")
+	filteredPVs := lo.OmitByKeys(pvsByResourceName, []string{""})
+	if len(filteredPVs) == 0 {
+		return "", "", nil, errors.New("No resources that have host path volumes")
 	}
 
-	selectedChart, err := askOne(
-		"Select Chart",
-		lo.Keys(filtered),
+	selectedResourceName, err := askOne(
+		"Select Resource",
+		lo.Keys(filteredPVs),
 		func(value string, index int) string {
-			count := len(filtered[value])
+			count := len(filteredPVs[value])
 			return fmt.Sprintf("%d host path volumes", count)
 		},
 	)
 
-	return filtered[selectedChart], helmChartByName[selectedChart], selectedChart, err
+	selectedResource := resourceByName[selectedResourceName]
+
+	return selectedResource.GetKind(), selectedResourceName, filteredPVs[selectedResourceName], err
 }
 
-func selectVolume(volumes []*corev1.PersistentVolume) (*corev1.PersistentVolume, string, error) {
+func selectVolume(volumes []*corev1.PersistentVolume) (*corev1.PersistentVolume, error) {
 	volsByPVCName := lo.Associate(volumes, func(v *corev1.PersistentVolume) (string, *corev1.PersistentVolume) {
 		return v.Spec.ClaimRef.Name, v
 	})
 
 	selectedVolumeName, err := askOne("Select Volume", lo.Keys(volsByPVCName), nil)
 
-	return volsByPVCName[selectedVolumeName], selectedVolumeName[strings.IndexByte(selectedVolumeName, '-')+1:], err
+	return volsByPVCName[selectedVolumeName], err
 }

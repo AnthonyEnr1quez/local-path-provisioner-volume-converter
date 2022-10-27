@@ -104,11 +104,11 @@ func (cw *ClientWrapper) GetPodByName(namespace, name string) (corev1.Pod, error
 	}
 }
 
-func (cw *ClientWrapper) GetPVFromPVC(pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolume, error) {
-	return cw.cs.CoreV1().PersistentVolumes().Get(context.Background(), pvc.Spec.VolumeName, metav1.GetOptions{})
+func (cw *ClientWrapper) GetPVByName(name string) (*corev1.PersistentVolume, error) {
+	return cw.cs.CoreV1().PersistentVolumes().Get(context.Background(), name, metav1.GetOptions{})
 }
 
-func (cw *ClientWrapper) GetPVCsByChartName(namespace, name string) ([]corev1.PersistentVolumeClaim, error) {
+func (cw *ClientWrapper) GetPVCsByResourceName(namespace, name string) ([]corev1.PersistentVolumeClaim, error) {
 	pvcs, err := cw.cs.CoreV1().PersistentVolumeClaims(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: fmt.Sprintf("app.kubernetes.io/name=%s", name)})
 	return pvcs.Items, err
 }
@@ -162,7 +162,7 @@ func (cw *ClientWrapper) CreateServiceAccount(namespace, name string) error {
 	return err
 }
 
-func (cw *ClientWrapper) DeleteCRB(name string) error { 
+func (cw *ClientWrapper) DeleteCRB(name string) error {
 	return cw.cs.RbacV1().ClusterRoleBindings().Delete(context.Background(), name, metav1.DeleteOptions{})
 }
 

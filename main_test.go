@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strings"
 	"testing"
@@ -87,7 +88,7 @@ func TestConversion(t *testing.T) {
 	cs.CoreV1().Namespaces().Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "test"}}, metav1.CreateOptions{})
 
 	cw := kube.GetClientWrapper(restConfig)
-	
+
 	err = cw.CreateMigrationNamespaceAndServiceAccount()
 	require.NoError(t, err)
 	defer cw.CleanupMigrationObjects()
@@ -96,8 +97,8 @@ func TestConversion(t *testing.T) {
 		resourceType      string
 		resourceLocation  string
 		pvcName           string
-		selectedNamespace string
-		selectedChartName string
+		resourceNamespace string
+		resourceName      string
 		volumeName        string
 		pvcNamespace      string
 	}{
@@ -105,8 +106,8 @@ func TestConversion(t *testing.T) {
 			resourceType:      "helmreleases",
 			resourceLocation:  "yaml/flux/helm-release.yaml",
 			pvcName:           "sonarr-config",
-			selectedNamespace: "test",
-			selectedChartName: "sonarr",
+			resourceNamespace: "test",
+			resourceName:      "sonarr",
 			volumeName:        "config",
 			pvcNamespace:      "test",
 		},
@@ -114,8 +115,8 @@ func TestConversion(t *testing.T) {
 			resourceType:      "helmcharts",
 			resourceLocation:  "yaml/radarr.yaml",
 			pvcName:           "radarr-config",
-			selectedNamespace: "kube-system",
-			selectedChartName: "radarr",
+			resourceNamespace: "kube-system",
+			resourceName:      "radarr",
 			volumeName:        "config",
 			pvcNamespace:      "test",
 		},
@@ -124,9 +125,20 @@ func TestConversion(t *testing.T) {
 		// test := test
 		t.Run(test.resourceType, func(t *testing.T) {
 			// t.Parallel()
-			selectedChart, err := createResourceFromFile(dc, test.resourceType, test.resourceLocation)
+			resource, err := createResourceFromFile(dc, test.resourceType, test.resourceLocation)
 			require.NoError(t, err)
-			kube.ConvertVolume(cw, selectedChart, test.pvcName, test.selectedNamespace, test.selectedChartName, test.volumeName, test.pvcNamespace, "1Gi")
+
+			err = kube.WaitFor(cw.IsPodReady(test.pvcNamespace, test.resourceName))
+			if err != nil {
+				log.Fatalln(err.Error())
+			}
+
+			pvc, _ := cs.CoreV1().PersistentVolumeClaims(test.pvcNamespace).Get(context.Background(), test.pvcName, metav1.GetOptions{})
+
+			volume, err := cw.GetPVByName(pvc.Spec.VolumeName)
+			require.NoError(t, err)
+
+			kube.ConvertVolume(cw, resource.GetKind(), test.resourceNamespace, test.resourceName, volume)
 		})
 	}
 }
