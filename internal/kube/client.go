@@ -37,12 +37,7 @@ type ClientWrapper struct {
 	cs kubernetes.Interface
 }
 
-func GetClientWrapper() ClientWrapper {
-	config, err := getKubeconfig()
-	if err != nil {
-		log.Fatalln(err.Error())
-	}
-
+func GetClientWrapper(config *rest.Config) ClientWrapper {
 	dc, err := dynamic.NewForConfig(config)
 	if err != nil {
 		log.Fatalln("unable to init dynamic client")
@@ -59,15 +54,7 @@ func GetClientWrapper() ClientWrapper {
 	}
 }
 
-// TODO DELETE
-func TempCW(cs kubernetes.Interface, dc dynamic.Interface) ClientWrapper {
-	return ClientWrapper{
-		dc: dc,
-		cs: cs,
-	}
-}
-
-func getKubeconfig() (*rest.Config, error) {
+func GetKubeconfig() (*rest.Config, error) {
 	configPath, found := os.LookupEnv("KUBECONFIG")
 	if !found {
 		return nil, errors.New("KUBECONFIG env var does not exist")

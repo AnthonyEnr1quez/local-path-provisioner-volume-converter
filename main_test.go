@@ -75,6 +75,7 @@ func TestConversion(t *testing.T) {
 	restConfig, err := getRestConfig(ctx, configBytes, k3sContainer)
 	require.NoError(t, err)
 
+	// todo
 	cs, err := kubernetes.NewForConfig(restConfig)
 	dc, err := dynamic.NewForConfig(restConfig)
 
@@ -85,13 +86,11 @@ func TestConversion(t *testing.T) {
 	// test ns
 	cs.CoreV1().Namespaces().Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "test"}}, metav1.CreateOptions{})
 
-	cw := kube.TempCW(cs, dc)
-	// TODO
-	err = cw.CreateNamespace(kube.MigrationNamespace)
+	cw := kube.GetClientWrapper(restConfig)
+	
+	err = cw.CreateMigrationNamespaceAndServiceAccount()
 	require.NoError(t, err)
-	defer cw.DeleteNamespace(kube.MigrationNamespace)
-	err = cw.CreateServiceAccount(kube.MigrationNamespace, kube.MigrationServiceAccount)
-	require.NoError(t, err)
+	defer cw.CleanupMigrationObjects()
 
 	tests := []struct {
 		resourceType      string
@@ -127,7 +126,7 @@ func TestConversion(t *testing.T) {
 			// t.Parallel()
 			selectedChart, err := createResourceFromFile(dc, test.resourceType, test.resourceLocation)
 			require.NoError(t, err)
-			exec(cw, selectedChart, test.pvcName, test.selectedNamespace, test.selectedChartName, test.volumeName, test.pvcNamespace, "1Gi")
+			kube.ConvertVolume(cw, selectedChart, test.pvcName, test.selectedNamespace, test.selectedChartName, test.volumeName, test.pvcNamespace, "1Gi")
 		})
 	}
 }

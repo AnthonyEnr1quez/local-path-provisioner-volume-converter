@@ -12,6 +12,26 @@ const (
 	MigrationServiceAccount = "pv-migrate-edit-account"
 )
 
+// todo, add waits
+func (cw *ClientWrapper) CreateMigrationNamespaceAndServiceAccount() error {
+	err := cw.CreateNamespace(MigrationNamespace)
+	if err != nil {
+		return err
+	}
+
+	return cw.CreateServiceAccount(MigrationNamespace, MigrationServiceAccount)
+}
+
+// TODO, add waits
+func (cw *ClientWrapper) CleanupMigrationObjects() error {
+	err := cw.DeleteNamespace(MigrationNamespace)
+	if err != nil {
+		return err
+	}
+
+	return cw.DeleteCRB(MigrationServiceAccount)
+}
+
 // TODO need -d on second write? https://github.com/utkuozdemir/pv-migrate/blob/master/USAGE.md
 func (cw *ClientWrapper) MigrateJob(namespace, fromPVC, toPVC string) (string, error) {
 	var backOffLimit int32 = 0
