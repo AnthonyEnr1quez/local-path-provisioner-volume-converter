@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -21,8 +22,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/serializer/yaml"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/remotecommand"
 )
 
 func TestConversion(t *testing.T) {
@@ -75,59 +78,44 @@ func TestConversion(t *testing.T) {
 	restConfig, err := getRestConfig(ctx, configBytes, k3sContainer)
 	require.NoError(t, err)
 
-	// todo
-	cs, err := kubernetes.NewForConfig(restConfig)
-	dc, err := dynamic.NewForConfig(restConfig)
-
-	err = updateProvisionerImage(cs)
-
-	// charts repo
-	_, err = createResourceFromFile(dc, "helmrepositories", "test_data/helm-repository.yaml")
-	// test ns
-	cs.CoreV1().Namespaces().Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "test"}}, metav1.CreateOptions{})
-
 	cw := GetClientWrapper(restConfig)
+
+	err = updateProvisionerImage(cw.cs)
+	require.NoError(t, err)
+
+	_, _, err = createResourceFromFile(cw.dc, "helmrepositories", "test_data/helm-repository.yaml")
+	require.NoError(t, err)
 
 	err = cw.CreateMigrationNamespaceAndServiceAccount()
 	require.NoError(t, err)
 	defer cw.CleanupMigrationObjects()
 
 	tests := []struct {
-		resourceType      string
-		resourceLocation  string
-		pvcName           string
-		resourceNamespace string
 		resourceName      string
-		volumeName        string
 		pvcNamespace      string
 		patcher           Patcher
 	}{
 		{
-			resourceType:      FluxHelmReleaseResource.Resource,
-			resourceLocation:  "test_data/helm-release.yaml",
-			pvcName:           "sonarr-config",
-			resourceNamespace: "test",
-			resourceName:      "sonarr",
-			volumeName:        "config",
-			pvcNamespace:      "test",
+			resourceName:      "helm-release",
+			pvcNamespace:      "default",
 			patcher:           HelmReleasePatcher{},
 		},
 		{
-			resourceType:      HelmChartResource.Resource,
-			resourceLocation:  "test_data/helm-chart.yaml",
-			pvcName:           "radarr-config",
-			resourceNamespace: "kube-system",
-			resourceName:      "radarr",
-			volumeName:        "config",
-			pvcNamespace:      "test",
+			resourceName:      "helm-chart",
+			pvcNamespace:      "default",
 			patcher:           HelmChartPatcher{},
 		},
 	}
 	for _, test := range tests {
 		// test := test
-		t.Run(test.resourceType, func(t *testing.T) {
+		resourceType := test.patcher.getResource().Resource
+		t.Run(resourceType, func(t *testing.T) {
 			// t.Parallel()
-			_, err := createResourceFromFile(dc, test.resourceType, test.resourceLocation)
+
+			file := "/config/hello.txt"
+			fileContents := "Hello World!"
+
+			_, resourceNamespace, err := createResourceFromFile(cw.dc, resourceType, fmt.Sprintf("test_data/%s.yaml", test.resourceName))
 			require.NoError(t, err)
 
 			err = WaitFor(cw.IsPodReady(test.pvcNamespace, test.resourceName))
@@ -135,14 +123,30 @@ func TestConversion(t *testing.T) {
 				log.Fatalln(err.Error())
 			}
 
-			pvc, err := cw.GetPVCByName(test.pvcNamespace, test.pvcName)
+			pod, err := cw.GetPodByName(test.pvcNamespace, test.resourceName)
+			require.NoError(t, err)
+
+			_, es, err := execInPod(cw.cs, restConfig, &pod, fmt.Sprintf("echo \"%s\" > %s", fileContents, file))
+			require.NoError(t, err)
+			require.Empty(t, es)
+
+			pvc, err := cw.GetPVCByName(test.pvcNamespace, fmt.Sprintf("%s-config", test.resourceName))
 			require.NoError(t, err)
 
 			volume, err := cw.GetPVByName(pvc.Spec.VolumeName)
 			require.NoError(t, err)
 
-			err = ConvertVolume(cw, test.resourceNamespace, test.resourceName, volume, test.patcher)
+			err = ConvertVolume(cw, resourceNamespace, test.resourceName, volume, test.patcher)
 			require.NoError(t, err)
+
+			pod, err = cw.GetPodByName(test.pvcNamespace, test.resourceName)
+			require.NoError(t, err)
+
+			output, es, err := execInPod(cw.cs, restConfig, &pod, fmt.Sprintf("cat %s", file))
+			require.NoError(t, err)
+			require.Empty(t, es)
+
+			assert.Contains(t, output, fileContents)
 		})
 	}
 }
@@ -216,29 +220,62 @@ func updateProvisionerImage(cs kubernetes.Interface) (err error) {
 	return
 }
 
-func createResourceFromFile(dc dynamic.Interface, resourceType, fileName string) (unstructured.Unstructured, error) {
+func createResourceFromFile(dc dynamic.Interface, resourceType, fileName string) (unstructured.Unstructured, string, error) {
 	fileBytes, err := os.ReadFile(fileName)
 	if err != nil {
-		return unstructured.Unstructured{}, err
+		return unstructured.Unstructured{}, "", err
 	}
 
 	obj := &unstructured.Unstructured{}
 	dec := yaml.NewDecodingSerializer(unstructured.UnstructuredJSONScheme)
 	_, gvk, err := dec.Decode(fileBytes, nil, obj)
 	if err != nil {
-		return unstructured.Unstructured{}, err
+		return unstructured.Unstructured{}, "", err
 	}
 
 	namespace, found, err := unstructured.NestedString(obj.Object, "metadata", "namespace")
 	if err != nil {
-		return unstructured.Unstructured{}, err
+		return unstructured.Unstructured{}, "", err
 	}
 	if !found {
-		return unstructured.Unstructured{}, errors.New("namespace not found")
+		return unstructured.Unstructured{}, "", errors.New("namespace not found")
 	}
 
 	gvr := schema.GroupVersionResource{Group: gvk.Group, Version: gvk.Version, Resource: resourceType}
 	out, err := dc.Resource(gvr).Namespace(namespace).Create(context.TODO(), obj, metav1.CreateOptions{})
 
-	return *out, err
+	return *out, namespace, err
+}
+
+func execInPod(cs kubernetes.Interface, config *rest.Config, pod *corev1.Pod, command string) (string, string, error) {
+	buf, errBuf := &bytes.Buffer{}, &bytes.Buffer{}
+
+	request := cs.CoreV1().RESTClient().
+		Post().
+		Namespace(pod.Namespace).
+		Resource("pods").
+		Name(pod.Name).
+		SubResource("exec").
+		VersionedParams(&corev1.PodExecOptions{
+			Command: []string{"/bin/sh", "-c", command},
+			Stdin:   false,
+			Stdout:  true,
+			Stderr:  true,
+			TTY:     true,
+		}, scheme.ParameterCodec)
+
+	exec, err := remotecommand.NewSPDYExecutor(config, "POST", request.URL())
+	if err != nil {
+		return "", "", err
+	}
+
+	err = exec.Stream(remotecommand.StreamOptions{
+		Stdout: buf,
+		Stderr: errBuf,
+	})
+	if err != nil {
+		return "", "", err
+	}
+
+	return buf.String(), errBuf.String(), nil
 }

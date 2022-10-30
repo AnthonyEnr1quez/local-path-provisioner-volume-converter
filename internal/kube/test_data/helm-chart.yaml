@@ -2,18 +2,22 @@
 apiVersion: helm.cattle.io/v1
 kind: HelmChart
 metadata:
-  name: radarr
+  name: helm-chart
   namespace: kube-system
   labels:
-    component: radarr
+    component: helm-chart
 spec:
-  repo: https://k8s-at-home.com/charts/
-  chart: radarr
-  targetNamespace: test
+  repo: https://bjw-s.github.io/helm-charts
+  chart: app-template
+  targetNamespace: default
   valuesContent: |-
     image:
-      repository: ghcr.io/k8s-at-home/radarr
-      tag: v4.2.4.6635
+      repository: busybox
+      tag: 1.35.0
+    command: ["tail", "-f", "/dev/null"]
+    service:
+      main:
+        enabled: false
     persistence:
       config:
         enabled: true

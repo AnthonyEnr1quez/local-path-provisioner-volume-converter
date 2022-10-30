@@ -9,7 +9,7 @@ import (
 
 func ConvertVolume(cw ClientWrapper, resourceNamespace, resourceName string, volume *corev1.PersistentVolume, patcher Patcher) (err error) {
 	pvcName := volume.Spec.ClaimRef.Name
-	volumeName := pvcName[strings.IndexByte(pvcName, '-')+1:]
+	volumeName := pvcName[strings.LastIndexByte(pvcName, '-')+1:]
 	pvcNamespace := volume.Spec.ClaimRef.Namespace
 	volumeSize := volume.Spec.Capacity.Storage().String()
 
