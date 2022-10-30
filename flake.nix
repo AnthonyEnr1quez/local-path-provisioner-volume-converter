@@ -15,7 +15,9 @@
             version = "0.0.3";
 
             modSha256 = pkgs.lib.fakeSha256;
-            vendorSha256 = "iU0RRIL5Vkxvs9SqIxT3xhfiwBPIbhrjK1NuoqU/0wU=";
+            vendorSha256 = "x8daBmpjrI7w9NYDHayN+ffxotfXb6krgKu7bs/9b8s=";
+
+            CGO_ENABLED = 0;
 
             src = ./.;
             checkPhase = ""; #todo
@@ -35,10 +37,8 @@
             gocode-gomod
             godef
             golint
-
             delve
             glibc
-
             kube3d
             fluxcd
           ];
