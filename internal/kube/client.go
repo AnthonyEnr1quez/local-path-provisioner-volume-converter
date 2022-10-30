@@ -68,8 +68,6 @@ func GetKubeconfig() (*rest.Config, error) {
 	return config, nil
 }
 
-// GETTERS
-
 func (cw *ClientWrapper) GetNamespaces() ([]corev1.Namespace, error) {
 	namespaces, err := cw.cs.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
 	if err != nil {
@@ -120,8 +118,6 @@ func (cw *ClientWrapper) GetPVCsByResourceName(namespace, name string) ([]corev1
 func (cw *ClientWrapper) getJobByName(namespace, name string) (*batchv1.Job, error) {
 	return cw.cs.BatchV1().Jobs(namespace).Get(context.Background(), name, metav1.GetOptions{})
 }
-
-// SETTERS
 
 func (cw *ClientWrapper) CreateNamespace(name string) error {
 	_, err := cw.cs.CoreV1().Namespaces().Create(context.Background(), &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}}, metav1.CreateOptions{})
@@ -209,50 +205,3 @@ func (cw *ClientWrapper) CreateJob(namespace string, job *batchv1.Job) (string, 
 	}
 	return job.Name, nil
 }
-
-// TODO DA BIN
-
-// func getPVCs(cs kubernetes.Interface, namespace string) []corev1.PersistentVolumeClaim {
-// 	pvcs, _ := cs.CoreV1().PersistentVolumeClaims(namespace).List(context.Background(), metav1.ListOptions{})
-// 	return pvcs.Items
-// }
-
-// func getPods(cs kubernetes.Interface) []corev1.Pod {
-// 	pods, _ := cs.CoreV1().Pods("test").List(context.Background(), metav1.ListOptions{})
-// 	return pods.Items
-// }
-
-// func isPodRunning(cs kubernetes.Interface, namespace, name string) wait.ConditionFunc {
-// 	return func() (bool, error) {
-// 		fmt.Printf(".") // progress bar!
-
-// 		pod, err := GetPodByName(cs, namespace, name)
-// 		if err != nil {
-// 			fmt.Println(err.Error())
-// 			return false, nil
-// 		}
-
-// 		switch pod.Status.Phase {
-// 		case corev1.PodRunning:
-// 			fmt.Println("running")
-// 			return true, nil
-// 		case corev1.PodFailed, corev1.PodSucceeded:
-// 			return false, nil
-// 		}
-// 		return false, nil
-// 	}
-// }
-
-// func isPodDeleted(cs kubernetes.Interface, namespace, name string) wait.ConditionFunc {
-// 	return func() (bool, error) {
-// 		fmt.Printf(".") // progress bar!
-
-// 		_, err := GetPodByName(cs, namespace, name)
-// 		if err != nil && err.Error() == fmt.Sprintf("pods \"%s\" not found", name) {
-// 			fmt.Println("deleted")
-// 			return true, nil
-// 		}
-
-// 		return false, nil
-// 	}
-// }

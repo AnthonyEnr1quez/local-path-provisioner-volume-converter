@@ -107,6 +107,7 @@ func TestConversion(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
+		// TODO
 		// test := test
 		resourceType := test.patcher.getResource().Resource
 		t.Run(resourceType, func(t *testing.T) {
@@ -209,7 +210,7 @@ func installFlux(ctx context.Context, config []byte, k3sC, fluxC testcontainers.
 
 func updateProvisionerImage(cs kubernetes.Interface) (err error) {
 	deployments := cs.AppsV1().Deployments("kube-system")
-	lpp, err := deployments.Get(context.Background(), "local-path-provisioner", metav1.GetOptions{})
+	lpp, err := deployments.Get(context.TODO(), "local-path-provisioner", metav1.GetOptions{})
 	if err != nil {
 		return
 	}

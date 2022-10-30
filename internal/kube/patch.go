@@ -220,14 +220,3 @@ func (cw *ClientWrapper) UnbindTempPVC(patcher Patcher, namespace, chartName, pv
 
 	return patchChart(patcher, cw.dc, namespace, chartName, fmt.Sprint(pvcName, "-temp"), patch)
 }
-
-// TODO
-// func patchCall[T Patcher](patcher T, cc dynamic.ResourceInterface, vals map[string]interface{}, chartName string, pvcName string) error {
-// 	payload, patchType := patcher.getPayload(vals, pvcName)
-// 	_, err := cc.Patch(context.Background(), chartName, patchType, payload, metav1.PatchOptions{})
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	return nil
-// }
