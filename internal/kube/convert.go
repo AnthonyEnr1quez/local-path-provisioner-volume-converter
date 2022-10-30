@@ -1,7 +1,7 @@
 package kube
 
 import (
-	"fmt"
+	"log"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -13,7 +13,7 @@ func ConvertVolume(cw ClientWrapper, resourceNamespace, resourceName string, vol
 	pvcNamespace := volume.Spec.ClaimRef.Namespace
 	volumeSize := volume.Spec.Capacity.Storage().String()
 
-	fmt.Printf("\nConverting PVC %s from host path volume to local volume\n\n", pvcName)
+	log.Printf("\nConverting PVC %s from host path volume to local volume\n\n", pvcName)
 
 	tempPVCName, err := cw.AddTempPVC(patcher, resourceNamespace, resourceName, volumeName, volumeSize)
 	if err != nil {
@@ -95,10 +95,10 @@ func ConvertVolume(cw ClientWrapper, resourceNamespace, resourceName string, vol
 		return
 	}
 
-	fmt.Printf("\nPVC %s converted\n\n", pvcName)
+	log.Printf("\nPVC %s converted\n\n", pvcName)
 
-	fmt.Print("Make sure to add the following block to the PVC declaration of your resource definition file if used.\n\n")
-	fmt.Print("annotations: \n  volumeType: local\n\n")
+	log.Print("Make sure to add the following block to the PVC declaration of your resource definition file if used.\n\n")
+	log.Print("annotations: \n  volumeType: local\n\n")
 
 	return
 }

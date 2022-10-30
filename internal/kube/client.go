@@ -171,7 +171,7 @@ func (cw *ClientWrapper) DeletePVC(namespace, name string) error {
 	err := cw.cs.CoreV1().PersistentVolumeClaims(namespace).Delete(context.Background(), name, metav1.DeleteOptions{PropagationPolicy: &deletePolicy})
 
 	if err == nil {
-		fmt.Println("PVC", name, "deleted")
+		log.Println("PVC", name, "deleted")
 	}
 	return err
 }
@@ -194,7 +194,7 @@ func (cw *ClientWrapper) ScaleDeployment(namespace, name string, replicas int) e
 		return err
 	}
 
-	fmt.Printf("\n%s deployment finished scaling\n", name)
+	log.Printf("%s deployment finished scaling\n", name)
 	return nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -25,7 +26,7 @@ type Patcher interface {
 type HelmChartPatcher struct{}
 
 func (hcp HelmChartPatcher) GetNamespacePath() []string {
-	return []string{"metadata", "namespace"}
+	return []string{"spec", "targetNamespace"}
 }
 
 func (hcp HelmChartPatcher) getResource() schema.GroupVersionResource {
@@ -38,7 +39,7 @@ func (hcp HelmChartPatcher) getValues(uc map[string]interface{}, chartName strin
 		return
 	}
 	if !found {
-		err = errors.New(fmt.Sprintf("valuesContent not found on helm chart %s", chartName))
+		err = errors.New(fmt.Sprintf("valuesContent not found on resource %s", chartName))
 		return
 	}
 
@@ -50,7 +51,7 @@ func (hcp HelmChartPatcher) getValues(uc map[string]interface{}, chartName strin
 	if val, ok := valuesMap["persistence"]; ok {
 		persistence = val.(map[string]interface{})
 	} else {
-		err = errors.New(fmt.Sprintf("persistence values not found on helm chart %s", chartName))
+		err = errors.New(fmt.Sprintf("persistence values not found on resource %s", chartName))
 		return
 	}
 
@@ -82,7 +83,7 @@ func (hcp HelmChartPatcher) getPayload(vals map[string]interface{}, _ string) (p
 type HelmReleasePatcher struct{}
 
 func (hrp HelmReleasePatcher) GetNamespacePath() []string {
-	return []string{"spec", "targetNamespace"}
+	return []string{"metadata", "namespace"}
 }
 
 func (hrp HelmReleasePatcher) getResource() schema.GroupVersionResource {
@@ -95,14 +96,14 @@ func (hrp HelmReleasePatcher) getValues(uc map[string]interface{}, chartName str
 		return
 	}
 	if !found {
-		err = errors.New(fmt.Sprintf("valuesContent not found on helm chart %s", chartName))
+		err = errors.New(fmt.Sprintf("valuesContent not found on resource %s", chartName))
 		return
 	}
 
 	if val, ok := valuesMap["persistence"]; ok {
 		persistence = val.(map[string]interface{})
 	} else {
-		err = errors.New(fmt.Sprintf("persistence values not found on helm chart %s", chartName))
+		err = errors.New(fmt.Sprintf("persistence values not found on resource %s", chartName))
 		return
 	}
 
@@ -115,7 +116,7 @@ func (hrp HelmReleasePatcher) getPayload(vals map[string]interface{}, pvcName st
 		return
 	}
 	if !found {
-		err = errors.New("persistence values not found on helm chart")
+		err = errors.New("persistence values not found on resource")
 		return
 	}
 
@@ -178,7 +179,7 @@ func patchChart(patcher Patcher, dynamicClient dynamic.Interface, namespace, cha
 		return err
 	}
 
-	fmt.Println("Helm chart patched")
+	log.Println("Resource patched")
 	return nil
 }
 

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 
 	"github.com/AlecAivazis/survey/v2/terminal"
@@ -10,7 +9,7 @@ import (
 )
 
 func main() {
-	fmt.Print("Use \"Ctrl+C\" to quit\n\n")
+	log.Print("Use \"Ctrl+C\" to quit\n\n")
 
 	config, err := kube.GetKubeconfig()
 	if err != nil {

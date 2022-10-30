@@ -107,11 +107,8 @@ func TestConversion(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		// TODO
-		// test := test
 		resourceType := test.patcher.getResource().Resource
 		t.Run(resourceType, func(t *testing.T) {
-			// t.Parallel()
 
 			file := "/config/hello.txt"
 			fileContents := "Hello World!"

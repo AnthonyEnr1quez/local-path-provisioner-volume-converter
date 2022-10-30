@@ -2,6 +2,7 @@ package kube
 
 import (
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -30,7 +31,7 @@ func (cw *ClientWrapper) IsPVCBound(namespace, pvcName string) wait.ConditionFun
 			if pv.Spec.PersistentVolumeSource.Local == nil {
 				return false, nil
 			}
-			fmt.Printf("\nNew PVC %s bound\n", pvcName)
+			log.Printf("\nNew PVC %s bound\n", pvcName)
 			return true, nil
 		default:
 			return false, nil
@@ -49,7 +50,7 @@ func (cw *ClientWrapper) IsPodReady(namespace, name string) wait.ConditionFunc {
 
 		for _, cond := range pod.Status.Conditions {
 			if cond.Type == corev1.PodReady && cond.Status == "True" {
-				fmt.Printf("\n%s pod bound\n", pod.Name)
+				log.Printf("\n%s pod bound\n", pod.Name)
 				return true, nil
 			}
 		}
@@ -69,7 +70,7 @@ func (cw *ClientWrapper) IsJobFinished(namespace, name string) wait.ConditionFun
 
 		for _, cond := range job.Status.Conditions {
 			if cond.Type == batchv1.JobComplete && cond.Status == "True" {
-				fmt.Printf("\n%s job complete\n", name)
+				log.Printf("%s job complete\n", name)
 				return true, nil
 			}
 		}
