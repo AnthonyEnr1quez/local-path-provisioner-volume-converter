@@ -91,19 +91,19 @@ func TestConversion(t *testing.T) {
 	defer cw.CleanupMigrationObjects()
 
 	tests := []struct {
-		resourceName      string
-		pvcNamespace      string
-		patcher           Patcher
+		resourceName string
+		pvcNamespace string
+		patcher      Patcher
 	}{
 		{
-			resourceName:      "helm-release",
-			pvcNamespace:      "default",
-			patcher:           HelmReleasePatcher{},
+			resourceName: "helm-release",
+			pvcNamespace: "default",
+			patcher:      HelmReleasePatcher{},
 		},
 		{
-			resourceName:      "helm-chart",
-			pvcNamespace:      "default",
-			patcher:           HelmChartPatcher{},
+			resourceName: "helm-chart",
+			pvcNamespace: "default",
+			patcher:      HelmChartPatcher{},
 		},
 	}
 	for _, test := range tests {
