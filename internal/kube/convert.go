@@ -1,6 +1,7 @@
 package kube
 
 import (
+	"fmt"
 	"log"
 	"strings"
 
@@ -95,10 +96,10 @@ func ConvertVolume(cw ClientWrapper, resourceNamespace, resourceName string, vol
 		return
 	}
 
-	log.Printf("\nPVC %s converted\n\n", pvcName)
+	log.Printf("PVC %s converted\n\n", pvcName)
 
-	log.Print("Make sure to add the following block to the PVC declaration of your resource definition file if used.\n\n")
-	log.Print("annotations: \n  volumeType: local\n\n")
+	fmt.Print("Make sure to add the following block to the PVC declaration of your resource definition file if used.\n\n")
+	fmt.Print("annotations: \n  volumeType: local\n\n")
 
 	return
 }
