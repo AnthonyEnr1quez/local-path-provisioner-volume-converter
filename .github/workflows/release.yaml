@@ -12,11 +12,8 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - uses: cachix/install-nix-action@v18
-      with:
-        extra_nix_config: |
-          access-tokens = github.com=${{ secrets.GH_TOKEN }}
     - run: nix build
     - uses: ncipollo/release-action@v1
       with:
         artifacts: "result/bin/local-path-provisioner-volume-converter"
-        token: ${{ secrets.GH_TOKEN }}
+        token: ${{ secrets.GITHUB_TOKEN }}
