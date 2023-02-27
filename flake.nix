@@ -28,7 +28,7 @@
 
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
-            go_1_19
+            go_1_20
             gotools
             gopls
             go-outline
@@ -38,7 +38,6 @@
             godef
             golint
             delve
-            glibc
             kube3d
             fluxcd
           ];
