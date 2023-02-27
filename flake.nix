@@ -15,7 +15,7 @@
             version = "0.0.4";
 
             modSha256 = pkgs.lib.fakeSha256;
-            vendorSha256 = "x8daBmpjrI7w9NYDHayN+ffxotfXb6krgKu7bs/9b8s=";
+            vendorSha256 = "VWNUd+McY0V+X96+4ClVCwOyMD94ogVdvBuQb4VeE/I=";
 
             CGO_ENABLED = 0;
 
