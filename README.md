@@ -1,8 +1,13 @@
+
+
 # local-path-provisioner-volume-converter
 
 A utility to convert volumes provisioned by the [local-path-provisioner](https://github.com/rancher/local-path-provisioner) from [hostPath](https://kubernetes.io/docs/concepts/storage/volumes/#hostpath) to [local](https://kubernetes.io/docs/concepts/storage/volumes/#local).
 
 Once the volume is converted to local type, restic backups using [Velero](https://velero.io/) are possible.
+
+### Usage
+Set the `KUBECONFIG` environment variable to the path of your kubeconfig file before running the tool.
 
 Currently supports converting volumes from the following resources:
 - [Flux HelmRelease](https://fluxcd.io/flux/components/helm/helmreleases/)
